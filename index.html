@@ -56,6 +56,12 @@
   <div id="overspeedWarning" class="warning-overlay overspeed hidden">
     <span>⚠ OVERSPEED ⚠</span>
   </div>
+  <div id="crashWarning" class="warning-overlay crash hidden">
+    <span>💥 CRASH! 💥</span>
+  </div>
+  <div id="collisionWarning" class="warning-overlay collision hidden">
+    <span>⚠ GROUND WARNING ⚠</span>
+  </div>
 
   <!-- ═══ SOL HUD PANELİ (Birincil + İkincil Göstergeler) ═══ -->
   <div id="hud">
@@ -148,6 +154,24 @@
     <div id="minimapCrosshair">+</div>
     <div id="minimapInfo">
       <span id="minimapCoords"></span>
+    </div>
+    <!-- Location Search Bar (expanded modda görünür) -->
+    <div id="locationSearch" class="hidden">
+      <div class="search-header">
+        <span class="search-icon">📍</span>
+        <span>Konum Ara</span>
+      </div>
+      <div class="search-input-wrapper">
+        <input 
+          type="text" 
+          id="locationInput" 
+          placeholder="Şehir adı... (örn: London, Tokyo, Paris)"
+          autocomplete="off"
+        />
+        <button id="searchBtn" title="Ara">🔍</button>
+      </div>
+      <div id="searchResults" class="search-results hidden"></div>
+      <div id="searchStatus" class="search-status hidden"></div>
     </div>
   </div>
 

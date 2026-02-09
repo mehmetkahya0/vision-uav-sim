@@ -35,6 +35,7 @@ class DroneSimulator {
     this.clock = { lastTime: performance.now(), deltaTime: 0 };
     this.flightStartTime = null;
     this.isFlying = false;
+    this.isTeleporting = false; // Teleport glitch engelleyici bayrak
     this.init();
   }
 
@@ -345,6 +346,148 @@ class DroneSimulator {
         this.collapseMinimap();
       }
     });
+
+    // ── Location Search Setup ──
+    this.setupLocationSearch();
+  }
+
+  setupLocationSearch() {
+    const searchInput = document.getElementById('locationInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const searchResults = document.getElementById('searchResults');
+    const searchStatus = document.getElementById('searchStatus');
+
+    if (!searchInput || !searchBtn) return;
+
+    // Enter tuşu ile arama
+    searchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        const query = searchInput.value.trim();
+        if (query) this.searchLocation(query);
+      }
+    });
+
+    // Arama butonu
+    searchBtn.addEventListener('click', () => {
+      const query = searchInput.value.trim();
+      if (query) this.searchLocation(query);
+    });
+  }
+
+  async searchLocation(query) {
+    const searchResults = document.getElementById('searchResults');
+    const searchStatus = document.getElementById('searchStatus');
+    
+    if (!searchResults || !searchStatus) return;
+
+    // Yükleniyor göster
+    searchStatus.className = 'search-status loading';
+    searchStatus.textContent = 'Aranıyor...';
+    searchResults.classList.add('hidden');
+    searchResults.innerHTML = '';
+
+    try {
+      // Nominatim API (OpenStreetMap geocoding - ücretsiz)
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5`;
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'DroneSimulator/1.0'
+        }
+      });
+
+      if (!response.ok) throw new Error('Arama başarısız');
+
+      const results = await response.json();
+
+      if (results.length === 0) {
+        searchStatus.className = 'search-status error';
+        searchStatus.textContent = 'Sonuç bulunamadı';
+        return;
+      }
+
+      // Sonuçları göster
+      searchStatus.classList.add('hidden');
+      searchResults.classList.remove('hidden');
+      searchResults.innerHTML = results.map((result, idx) => `
+        <div class="search-result-item" data-idx="${idx}">
+          <div class="search-result-name">${result.display_name}</div>
+          <div class="search-result-coords">${parseFloat(result.lat).toFixed(4)}°N, ${parseFloat(result.lon).toFixed(4)}°E</div>
+        </div>
+      `).join('');
+
+      // Sonuç tıklama event'leri
+      searchResults.querySelectorAll('.search-result-item').forEach((item, idx) => {
+        item.addEventListener('click', () => {
+          const result = results[idx];
+          this.teleportDrone(parseFloat(result.lat), parseFloat(result.lon), result.display_name);
+        });
+      });
+
+    } catch (error) {
+      console.error('Geocoding hatası:', error);
+      searchStatus.className = 'search-status error';
+      searchStatus.textContent = 'Hata: ' + error.message;
+    }
+  }
+
+  teleportDrone(latitude, longitude, locationName) {
+    const searchStatus = document.getElementById('searchStatus');
+    
+    // Teleport bayrağı (trail update'i engellemek için)
+    this.isTeleporting = true;
+    
+    // Drone pozisyonunu değiştir
+    this.physics.latitude = latitude;
+    this.physics.longitude = longitude;
+    this.physics.height = 500; // 500m yükseklikte başlat
+    this.physics.heading = 0; // Heading sıfırla
+    this.physics.pitch = 3;
+    this.physics.roll = 0;
+
+    // Trail'i temizle
+    this.minimapTrailPositions = [];
+    this.lastTrailTime = performance.now();
+
+    // Entity pozisyonlarını hemen güncelle
+    const droneCart = Cesium.Cartesian3.fromDegrees(longitude, latitude, 0);
+    if (this.minimapDroneEntity) {
+      this.minimapDroneEntity.position = droneCart;
+    }
+
+    // Heading çizgisini güncelle
+    if (this.minimapHeadingEntity) {
+      const lineLen = this.minimapExpanded ? 0.01 : 0.003;
+      this.minimapHeadingEntity.polyline.positions = Cesium.Cartesian3.fromDegreesArray([
+        longitude, latitude,
+        longitude, latitude + lineLen,
+      ]);
+    }
+
+    // Minimap kamera animasyonu
+    this.minimapViewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, this.minimapExpanded ? 5000000 : 5000),
+      duration: 1.5,
+      complete: () => {
+        // Animasyon tamamlandı, trail update'i tekrar aktif
+        this.isTeleporting = false;
+        this.minimapViewer.scene.requestRender();
+      }
+    });
+
+    // Başarı mesajı
+    searchStatus.className = 'search-status success';
+    searchStatus.textContent = `✓ ${locationName.split(',')[0]} konumuna ışınlandı!`;
+
+    // Sonuçları gizle
+    const searchResults = document.getElementById('searchResults');
+    if (searchResults) searchResults.classList.add('hidden');
+
+    // 2 saniye sonra mesajı gizle
+    setTimeout(() => {
+      searchStatus.classList.add('hidden');
+    }, 2000);
+
+    console.log(`📍 Drone teleported to: ${locationName} (${latitude}, ${longitude})`);
   }
 
   expandMinimap() {
@@ -357,6 +500,10 @@ class DroneSimulator {
     container.classList.add('minimap-expanded');
     closeBtn?.classList.remove('hidden');
     this.minimapBackdrop?.classList.add('visible');
+
+    // Location search bar'ı göster
+    const locationSearch = document.getElementById('locationSearch');
+    if (locationSearch) locationSearch.classList.remove('hidden');
 
     // Expanded modda kamera kontrollerini aç (zoom/pan)
     const msc = this.minimapViewer.scene.screenSpaceCameraController;
@@ -389,6 +536,17 @@ class DroneSimulator {
     closeBtn?.classList.add('hidden');
     this.minimapBackdrop?.classList.remove('visible');
 
+    // Location search bar'ı gizle
+    const locationSearch = document.getElementById('locationSearch');
+    if (locationSearch) {
+      locationSearch.classList.add('hidden');
+      // Sonuçları ve status'ı temizle
+      const searchResults = document.getElementById('searchResults');
+      const searchStatus = document.getElementById('searchStatus');
+      if (searchResults) searchResults.classList.add('hidden');
+      if (searchStatus) searchStatus.classList.add('hidden');
+    }
+
     // Kamera kontrollerini tekrar kapat
     const msc = this.minimapViewer.scene.screenSpaceCameraController;
     msc.enableTranslate = false;
@@ -420,6 +578,10 @@ class DroneSimulator {
 
     // ── Fizik Güncelle ──
     this.physics.update(this.clock.deltaTime);
+
+    // ── Çarpışma Kontrolü & Terrain Height Query ──
+    this.updateTerrainHeight();
+    this.physics.checkCollisionAndCrash();
 
     // ── Drone Modeli Güncelle ──
     this.droneModel.update(this.physics);
@@ -528,20 +690,25 @@ class DroneSimulator {
 
     // ── Drone pozisyon marker'ını güncelle ──
     const droneCart = Cesium.Cartesian3.fromDegrees(pos.longitude, pos.latitude, 0);
-    this.minimapDroneEntity.position = droneCart;
+    if (this.minimapDroneEntity) {
+      this.minimapDroneEntity.position = droneCart;
+    }
 
     // ── Heading çizgisini güncelle ──
     const headingRad = Cesium.Math.toRadians(this.physics.heading);
     const lineLen = this.minimapExpanded ? 0.01 : 0.003;
     const endLon = pos.longitude + Math.sin(headingRad) * lineLen;
     const endLat = pos.latitude + Math.cos(headingRad) * lineLen;
-    this.minimapHeadingEntity.polyline.positions = Cesium.Cartesian3.fromDegreesArray([
-      pos.longitude, pos.latitude,
-      endLon, endLat,
-    ]);
+    if (this.minimapHeadingEntity) {
+      this.minimapHeadingEntity.polyline.positions = Cesium.Cartesian3.fromDegreesArray([
+        pos.longitude, pos.latitude,
+        endLon, endLat,
+      ]);
+    }
 
     // ── İz çizgisi (trail) - her 500ms bir nokta ekle ──
-    if (now - this.lastTrailTime > 500) {
+    // Teleport sırasında trail update'i atla (glitch engelleme)
+    if (!this.isTeleporting && now - this.lastTrailTime > 500) {
       this.minimapTrailPositions.push(
         Cesium.Cartesian3.fromDegrees(pos.longitude, pos.latitude, 0)
       );
@@ -553,7 +720,8 @@ class DroneSimulator {
     }
 
     // ── Kamerayı drone'a merkezle (küçük modda) ──
-    if (!this.minimapExpanded) {
+    // Teleport sırasında kamera güncellemesi atla (flyTo çakışmasını engelle)
+    if (!this.minimapExpanded && !this.isTeleporting) {
       this.minimapViewer.camera.setView({
         destination: Cesium.Cartesian3.fromDegrees(
           pos.longitude, pos.latitude, 5000
@@ -567,8 +735,37 @@ class DroneSimulator {
         `${pos.latitude.toFixed(4)}°N  ${pos.longitude.toFixed(4)}°E  ${pos.height.toFixed(0)}m`;
     }
 
-    // Render iste
-    this.minimapViewer.scene.requestRender();
+    // Render iste (sadece küçük modda veya expanded + değişiklik varsa)
+    if (!this.minimapExpanded || this.frameCount % 3 === 0) {
+      this.minimapViewer.scene.requestRender();
+    }
+  }
+
+  /**
+   * Drone konumunda arazi yüksekliğini sor ve physics'e geçir
+   * (Terrain height estimation)
+   */
+  updateTerrainHeight() {
+    const pos = this.physics.getPosition();
+    
+    // Terrain height sampling: Her N frame'de drone altındaki zemin yüksekliğini al
+    if (this.frameCount % 6 === 0) {
+      const terrainProvider = this.viewer.scene.globe.terrainProvider;
+      const cartographicArray = [
+        Cesium.Cartographic.fromDegrees(pos.longitude, pos.latitude)
+      ];
+
+      Cesium.sampleTerrainMostDetailed(terrainProvider, cartographicArray)
+        .then((samples) => {
+          if (samples && samples.length > 0) {
+            this.physics.setTerrainHeight(samples[0].height);
+          }
+        })
+        .catch(() => {
+          // Fallback: zemin seviyesi 0
+          this.physics.setTerrainHeight(0);
+        });
+    }
   }
 }
 

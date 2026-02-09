@@ -167,6 +167,15 @@ export class DronePhysics {
     this.currentDrag = 0;         // N (anlık sürüklenme)
 
     // ═════════════════════════════════════════
+    // ÇARPIŞMA & KAZA SİSTEMİ (COLLISION)
+    // ═════════════════════════════════════════
+    this.isCrashed = false;
+    this.crashTime = 0;           // Kaza zamanı
+    this.terrainHeight = 0;       // Metin yüksekliği (metre)
+    this.collisionMargin = 20;    // Minimum güvenli yükseklik (metre, zemin üstü)
+    this.isCollisionWarning = false;
+
+    // ═════════════════════════════════════════
     // İSTATİSTİKLER
     // ═════════════════════════════════════════
     this.totalDistance = 0;
@@ -577,5 +586,57 @@ export class DronePhysics {
       lift: this.currentLift,
       drag: this.currentDrag,
     };
+  }
+
+  // ═══════════════════════════════════════════
+  // ÇARPIŞMA KONTROLLERI (COLLISION DETECTION)
+  // ═══════════════════════════════════════════
+
+  /**
+   * Arazi yüksekliğini güncelle (dış kaynak Cesium'dan)
+   * @param {number} height - Metin yüksekliği (metre)
+   */
+  setTerrainHeight(height) {
+    this.terrainHeight = height || 0;
+    
+    // Çarpışma uyarısı kontrolü
+    const altitudeAboveTerrain = this.height - this.terrainHeight;
+    this.isCollisionWarning = altitudeAboveTerrain < this.collisionMargin && !this.isCrashed;
+  }
+
+  /**
+   * Crash durumunu kontrol et. Eğer zemin altında ise crash
+   */
+  checkCollisionAndCrash() {
+    if (this.isCrashed) return;
+
+    const altitudeAboveTerrain = this.height - this.terrainHeight;
+
+    // Zemin altına iniş = CRASH
+    if (altitudeAboveTerrain <= 0) {
+      this.crash();
+    }
+  }
+
+  /**
+   * Crash durumunu tetikle
+   */
+  crash() {
+    if (this.isCrashed) return;
+
+    this.isCrashed = true;
+    this.crashTime = performance.now();
+    this.throttle = 0;           // Motor hemen kes
+    this.airspeed = 0;           // Hızı sıfırla
+    this.isOn = false;           // Sistemi kapat
+
+    console.error('💥 CRASH! Drone çarptı!');
+  }
+
+  /**
+   * Crash durumunda olup olmadığını kontrol et
+   */
+  hasCrashed() {
+    return this.isCrashed;
   }
 }

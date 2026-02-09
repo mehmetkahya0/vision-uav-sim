@@ -554,6 +554,29 @@ html, body {
   text-shadow: 0 0 20px rgba(255, 170, 0, 0.8), 0 0 40px rgba(255, 170, 0, 0.4);
 }
 
+.warning-overlay.crash {
+  background: rgba(255, 30, 30, 0.25);
+  border-color: rgba(255, 50, 60, 1);
+  animation: crashBlink 0.2s infinite;
+}
+
+.warning-overlay.crash span {
+  color: #ff0000;
+  text-shadow: 0 0 30px rgba(255, 50, 60, 1), 0 0 60px rgba(255, 50, 60, 0.6);
+  animation: crashPulse 0.3s infinite;
+}
+
+.warning-overlay.collision {
+  background: rgba(255, 170, 0, 0.15);
+  border-color: rgba(255, 170, 0, 1);
+}
+
+.warning-overlay.collision span {
+  color: #ff9900;
+  text-shadow: 0 0 20px rgba(255, 170, 0, 0.9), 0 0 40px rgba(255, 170, 0, 0.5);
+  font-size: 24px;
+}
+
 .warning-overlay.hidden {
   display: none;
 }
@@ -561,6 +584,16 @@ html, body {
 @keyframes warningBlink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
+}
+
+@keyframes crashBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.15; }
+}
+
+@keyframes crashPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }
 
 /* ═══════════════════════════════════════
@@ -805,3 +838,163 @@ html, body {
   font-weight: bold;
   letter-spacing: 0.8px;
 }
+
+/* ═══ LOCATION SEARCH (Minimap içinde) ═══ */
+#locationSearch {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 420px;
+  max-width: 90%;
+  background: rgba(0, 10, 20, 0.95);
+  border: 2px solid rgba(0, 212, 255, 0.6);
+  border-radius: 8px;
+  padding: 12px;
+  z-index: 200;
+  box-shadow: 0 8px 32px rgba(0, 212, 255, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+#locationSearch.hidden {
+  display: none;
+}
+
+.search-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: #00d4ff;
+  font-family: 'Consolas', monospace;
+  font-size: 13px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.search-icon {
+  font-size: 16px;
+}
+
+.search-input-wrapper {
+  display: flex;
+  gap: 8px;
+}
+
+#locationInput {
+  flex: 1;
+  background: rgba(0, 30, 50, 0.8);
+  border: 1px solid rgba(0, 212, 255, 0.4);
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: #fff;
+  font-family: 'Consolas', monospace;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s;
+}
+
+#locationInput:focus {
+  border-color: rgba(0, 212, 255, 0.8);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
+}
+
+#locationInput::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+#searchBtn {
+  background: rgba(0, 212, 255, 0.2);
+  border: 1px solid rgba(0, 212, 255, 0.5);
+  color: #00d4ff;
+  font-size: 16px;
+  width: 42px;
+  height: 38px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#searchBtn:hover {
+  background: rgba(0, 212, 255, 0.4);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.4);
+}
+
+#searchBtn:active {
+  transform: scale(0.95);
+}
+
+.search-results {
+  margin-top: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.search-results.hidden {
+  display: none;
+}
+
+.search-result-item {
+  background: rgba(0, 50, 80, 0.5);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  color: #fff;
+}
+
+.search-result-item:hover {
+  background: rgba(0, 212, 255, 0.2);
+  border-color: rgba(0, 212, 255, 0.6);
+  transform: translateX(4px);
+}
+
+.search-result-name {
+  font-weight: bold;
+  color: #00d4ff;
+  margin-bottom: 4px;
+}
+
+.search-result-coords {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.search-status {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  text-align: center;
+}
+
+.search-status.hidden {
+  display: none;
+}
+
+.search-status.loading {
+  background: rgba(255, 170, 0, 0.2);
+  border: 1px solid rgba(255, 170, 0, 0.4);
+  color: #ffaa00;
+}
+
+.search-status.error {
+  background: rgba(255, 50, 60, 0.2);
+  border: 1px solid rgba(255, 50, 60, 0.4);
+  color: #ff3344;
+}
+
+.search-status.success {
+  background: rgba(0, 255, 136, 0.2);
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  color: #00ff88;
+}
+

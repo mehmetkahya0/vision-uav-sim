@@ -33,6 +33,8 @@ export class HUD {
     // ── Uyarı Elemanları ──
     this.stallWarning = document.getElementById('stallWarning');
     this.overspeedWarning = document.getElementById('overspeedWarning');
+    this.crashWarning = document.getElementById('crashWarning');
+    this.collisionWarning = document.getElementById('collisionWarning');
 
     // Throttle bar
     this.throttleBar = document.getElementById('throttleBarFill');
@@ -186,6 +188,25 @@ export class HUD {
         this.overspeedWarning.classList.remove('hidden');
       } else {
         this.overspeedWarning.classList.add('hidden');
+      }
+    }
+
+    // CRASH UYARISI
+    if (this.crashWarning) {
+      if (physics.isCrashed) {
+        this.crashWarning.classList.remove('hidden');
+        this.crashWarning.style.animationDuration = '0.2s'; // Hızlı yanıp söner
+      } else {
+        this.crashWarning.classList.add('hidden');
+      }
+    }
+
+    // ZEMİN YAKLAŞMA UYARISI
+    if (this.collisionWarning) {
+      if (physics.isCollisionWarning && !physics.isCrashed) {
+        this.collisionWarning.classList.remove('hidden');
+      } else {
+        this.collisionWarning.classList.add('hidden');
       }
     }
   }
