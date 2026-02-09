@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Istanbul Drone Simulator</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <!-- Ana Cesium sahne -->
+  <div id="cesiumContainer"></div>
+
+  <!-- Drone kamera görüntüsü (PiP) -->
+  <div id="droneCameraContainer" class="pip">
+    <div id="droneCameraView"></div>
+    <div id="cameraOverlay">
+      <span id="cameraLabel">DRONE CAM</span>
+      <button id="toggleCameraSize" title="Tam Ekran / Küçült">⛶</button>
+    </div>
+    <div id="cameraHUD">
+      <div id="crosshair">+</div>
+    </div>
+  </div>
+
+  <!-- ═══ UYARI SİSTEMLERİ ═══ -->
+  <div id="stallWarning" class="warning-overlay hidden">
+    <span>⚠ STALL ⚠</span>
+  </div>
+  <div id="overspeedWarning" class="warning-overlay overspeed hidden">
+    <span>⚠ OVERSPEED ⚠</span>
+  </div>
+
+  <!-- ═══ SOL HUD PANELİ (Birincil + İkincil Göstergeler) ═══ -->
+  <div id="hud">
+    <div class="hud-section">
+      <div class="hud-section-title">UÇUŞ VERİLERİ</div>
+      <div class="hud-row">
+        <span id="hudAltitude">ALT: 0 m</span>
+        <span id="hudSpeed">TAS: 0 km/h</span>
+      </div>
+      <div class="hud-row">
+        <span id="hudHeading">HDG: 0° K</span>
+        <span id="hudPitch">P:+0.0° R:+0.0°</span>
+      </div>
+    </div>
+    <div class="hud-divider"></div>
+    <div class="hud-section">
+      <div class="hud-section-title">MOTOR & DİNAMİKLER</div>
+      <div class="hud-row">
+        <span id="hudThrottle">THR: 65%</span>
+        <span id="hudClimbRate">VS: +0.0 m/s</span>
+      </div>
+      <div class="hud-row">
+        <span id="hudGForce">G: 1.0</span>
+        <span id="hudAoA">AoA: 0.0°</span>
+      </div>
+    </div>
+    <div class="hud-divider"></div>
+    <div class="hud-section">
+      <div class="hud-row">
+        <span id="hudLat">LAT: 0</span>
+        <span id="hudLon">LON: 0</span>
+      </div>
+      <div class="hud-row">
+        <span id="hudBattery">FUEL: 100%</span>
+        <span id="hudFlightTime">TIME: 00:00</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ THROTTLE BAR (Sağ dikey çubuk) ═══ -->
+  <div id="throttleBarContainer">
+    <div class="throttle-label">THR</div>
+    <div class="throttle-track">
+      <div id="throttleBarFill" class="throttle-fill"></div>
+    </div>
+    <div class="throttle-value">0%</div>
+  </div>
+
+  <!-- ═══ KONTROL YARDIMI ═══ -->
+  <div id="controlsHelp">
+    <button id="toggleHelp">?</button>
+    <div id="helpPanel" class="hidden">
+      <h3>Kontroller - Uçuş Sim</h3>
+      <table>
+        <tr><td><kbd>W</kbd></td><td>Pitch Down (Burun Aşağı)</td></tr>
+        <tr><td><kbd>S</kbd></td><td>Pitch Up (Burun Yukarı)</td></tr>
+        <tr><td><kbd>A</kbd></td><td>Roll Left (Sol Kanat Aşağı)</td></tr>
+        <tr><td><kbd>D</kbd></td><td>Roll Right (Sağ Kanat Aşağı)</td></tr>
+        <tr><td><kbd>Q</kbd></td><td>Yaw Left (Sola Sapma)</td></tr>
+        <tr><td><kbd>E</kbd></td><td>Yaw Right (Sağa Sapma)</td></tr>
+        <tr><td><kbd>L.Shift</kbd></td><td>Throttle + (Gaz Artır)</td></tr>
+        <tr><td><kbd>L.Ctrl</kbd></td><td>Throttle - (Gaz Azalt)</td></tr>
+        <tr><td><kbd>R / F</kbd></td><td>Kamera Yukarı / Aşağı</td></tr>
+        <tr><td><kbd>T</kbd></td><td>Kamera Sıfırla</td></tr>
+        <tr><td><kbd>V</kbd></td><td>Kamera Modu (Takip/Cockpit)</td></tr>
+        <tr><td><kbd>C</kbd></td><td>Drone Cam (PiP/Tam Ekran)</td></tr>
+      </table>
+      <div class="help-physics-note">
+        <small>Fizik: Lift=½ρv²SC<sub>L</sub> | Stall@16°AoA | Koordineli Dönüş</small>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ MİNİHARİTA ═══ -->
+  <div id="minimapContainer">
+    <canvas id="minimapCanvas"></canvas>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
