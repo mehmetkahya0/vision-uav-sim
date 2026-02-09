@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Istanbul Drone Simulator</title>
+  <title>AI UAV SIMULATOR</title>
   <link rel="stylesheet" href="/src/styles.css" />
   <!-- TensorFlow.js and COCO-SSD for object detection -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
@@ -36,6 +36,9 @@
       <div class="det-row">
         <span>HEDEF: <strong id="detectionCount">0</strong></span>
         <span id="detConfidence" class="det-conf">CONF: 25%</span>
+      </div>
+      <div class="det-row det-distance">
+        <span id="detClosestDistance" class="det-dist">EN YAKIN: --</span>
       </div>
     </div>
     <div class="det-footer">

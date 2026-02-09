@@ -149,12 +149,19 @@ export class ObjectDetector {
     this.frozenCanvas = null;
     this.frozenDetections = [];
 
+    // ── Distance Estimation (Mesafe Tahmini) ──
+    this.cameraFOV = 75; // Drone kamera FOV (derece)
+    this.enableDistance = true;
+    this.closestDetection = null; // En yakın nesne
+    this.avgDistance = 0;
+
     // ── UI Elemanları ──
     this.statusEl = document.getElementById('detectionStatus');
     this.detCountEl = document.getElementById('detectionCount');
     this.detPanelEl = document.getElementById('detectionPanel');
     this.aiBadgeEl = document.getElementById('aiStatusBadge');
     this.detConfEl = document.getElementById('detConfidence');
+    this.detClosestDistEl = document.getElementById('detClosestDistance');
 
     // Animasyon durumu
     this._scanLineOffset = 0;
@@ -391,7 +398,7 @@ export class ObjectDetector {
   // TESPIT ÇALIŞTIR
   // ═══════════════════════════════════════════════════════════════
 
-  async detect(sourceCanvas) {
+  async detect(sourceCanvas, physics = null) {
     if (!this.isReady || !this.isEnabled || this.isRunning) return;
     if (!sourceCanvas || sourceCanvas.width === 0 || sourceCanvas.height === 0)
       return;
@@ -413,6 +420,20 @@ export class ObjectDetector {
         const color = getClassColor(pred.class);
         // Basit tracking: önceki frame'de aynı sınıfta en yakın kutuyu bul
         const trackId = this._matchTrack(x, y, x + w, y + h, pred.class);
+        
+        // Mesafe hesapla (physics datası varsa)
+        let distance = null;
+        if (physics && this.enableDistance) {
+          distance = this._calculateDistance(
+            x + w / 2,
+            y + h / 2,
+            h,
+            sourceCanvas.width,
+            sourceCanvas.height,
+            physics
+          );
+        }
+
         return {
           x1: x,
           y1: y,
@@ -423,11 +444,15 @@ export class ObjectDetector {
           classNameTr: CLASS_NAME_TR[pred.class] || pred.class,
           color: color,
           trackId: trackId,
+          distance: distance,
         };
       });
 
       // Smooth interpolation (bounding box titreşimi azaltma)
       this.detections = this._interpolateDetections(newDetections);
+
+      // En yakın nesneyi bul
+      this._findClosestDetection();
 
       // İstatistik
       this.inferenceMs = performance.now() - t0;
@@ -500,6 +525,93 @@ export class ObjectDetector {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // MESAFE TAHMİNİ (DISTANCE ESTIMATION)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Nesneye yaklaşık mesafe hesapla.
+   * Yöntem: Drone altitude + camera pitch + FOV + bounding box pozisyonu
+   * 
+   * @param {number} cx - Bounding box merkez X (pixel)
+   * @param {number} cy - Bounding box merkez Y (pixel)
+   * @param {number} boxHeight - Bounding box yüksekliği (pixel)
+   * @param {number} canvasWidth - Canvas genişliği
+   * @param {number} canvasHeight - Canvas yüksekliği
+   * @param {object} physics - { height: altitude(m), pitch: pitch(deg), cameraPitch: cameraPitch(deg) }
+   * @returns {number} Mesafe (metre)
+   */
+  _calculateDistance(cx, cy, boxHeight, canvasWidth, canvasHeight, physics) {
+    const altitude = physics.height; // Drone yüksekliği (metre)
+    const cameraPitchDeg = physics.cameraPitch; // Kamera pitch açısı (derece, genelde -45)
+    const dronePitchDeg = physics.pitch || 0; // Drone pitch (derece)
+
+    // Total pitch = drone pitch + camera pitch
+    const totalPitchDeg = dronePitchDeg + cameraPitchDeg;
+    const totalPitchRad = (totalPitchDeg * Math.PI) / 180;
+
+    // Canvas'ın dikey FOV'u hesapla
+    const verticalFOVRad = (this.cameraFOV * Math.PI) / 180;
+
+    // Bounding box merkezinin canvas içindeki normalize Y pozisyonu
+    // 0 = en üst, 1 = en alt
+    const normalizedY = cy / canvasHeight;
+
+    // Canvas'ın ortasından olan ofset açısı
+    // normalizedY=0.5 → ofset=0 (merkez)
+    // normalizedY=1.0 → ofset=verticalFOV/2 (alt)
+    // normalizedY=0.0 → ofset=-verticalFOV/2 (üst)
+    const yOffsetRad = (normalizedY - 0.5) * verticalFOVRad;
+
+    // Ray açısı (horizon'dan aşağı doğru pozitif)
+    const rayAngleRad = totalPitchRad + yOffsetRad;
+
+    // Zemine olan mesafe hesapla
+    // distance = altitude / tan(|rayAngle|)
+    // Eğer ray horizon'un üstündeyse (pozitif pitch), mesafe çok büyük
+    const tanAngle = Math.tan(Math.abs(rayAngleRad));
+    if (tanAngle < 0.01) {
+      // Neredeyse yatay, çok uzak
+      return 9999;
+    }
+
+    const groundDistance = altitude / tanAngle;
+
+    // Zoom faktörünü hesaba kat (zoom yaparken mesafe değişmez)
+    const zoom = this._currentZoom || 1.0;
+
+    // Basitleştirilmiş slant range (direkt mesafe)
+    // slantRange = sqrt(groundDistance^2 + altitude^2)
+    const slantRange = Math.sqrt(
+      groundDistance * groundDistance + altitude * altitude
+    );
+
+    return Math.round(slantRange);
+  }
+
+  /**
+   * En yakın nesneyi bul ve işaretle
+   */
+  _findClosestDetection() {
+    this.closestDetection = null;
+    let minDist = Infinity;
+    let totalDist = 0;
+    let count = 0;
+
+    for (const det of this.detections) {
+      if (det.distance && det.distance < 9999) {
+        totalDist += det.distance;
+        count++;
+        if (det.distance < minDist) {
+          minDist = det.distance;
+          this.closestDetection = det;
+        }
+      }
+    }
+
+    this.avgDistance = count > 0 ? Math.round(totalDist / count) : 0;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // ÇİZİM - BOUNDING BOX OVERLAY
   // Taktik görünümlü askeri HUD stili
   // ═══════════════════════════════════════════════════════════════
@@ -541,21 +653,38 @@ export class ObjectDetector {
    * Tek bir tespit kutusu çiz (taktik stil)
    */
   _drawSingleDetection(ctx, det) {
-    const { x1, y1, x2, y2, score, classNameTr, color } = det;
+    const { x1, y1, x2, y2, score, classNameTr, color, distance } = det;
     const w = x2 - x1;
     const h = y2 - y1;
     const cornerLen = Math.min(w, h) * 0.25;
 
+    // En yakın nesne mi?
+    const isClosest = this.closestDetection && det.trackId === this.closestDetection.trackId;
+
+    // Mesafe bazlı renk modifikasyonu (yakın = daha kırmızımsı)
+    let drawColor = color;
+    if (distance && distance < 9999) {
+      if (distance < 50) {
+        drawColor = '#ff3344'; // Çok yakın - kırmızı
+      } else if (distance < 150) {
+        drawColor = '#ff9900'; // Yakın - turuncu
+      } else if (distance < 300) {
+        drawColor = '#ffdd00'; // Orta - sarı
+      } else {
+        drawColor = color; // Uzak - orijinal renk
+      }
+    }
+
     // ── Ana kutu (ince çizgi) ──
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = drawColor;
+    ctx.lineWidth = isClosest ? 2 : 1;
+    ctx.globalAlpha = isClosest ? 0.8 : 0.5;
     ctx.strokeRect(x1, y1, w, h);
 
     // ── Köşe vurguları (kalın, taktik) ──
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = isClosest ? 3.5 : 2.5;
     ctx.globalAlpha = 1.0;
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = drawColor;
 
     // Sol üst
     ctx.beginPath();
@@ -585,8 +714,12 @@ export class ObjectDetector {
     ctx.lineTo(x2, y2 - cornerLen);
     ctx.stroke();
 
-    // ── Label (sınıf + skor + tracking ID) ──
-    const label = `${classNameTr} ${(score * 100).toFixed(0)}% #${det.trackId || 0}`;
+    // ── Label (sınıf + skor + tracking ID + distance) ──
+    let label = `${classNameTr} %${(score * 100).toFixed(0)} #${det.trackId || 0}`;
+    if (distance && distance < 9999) {
+      label += ` ${distance}m`;
+    }
+    
     ctx.font = 'bold 11px Consolas, monospace';
     const metrics = ctx.measureText(label);
     const labelW = metrics.width + 12;
@@ -594,9 +727,9 @@ export class ObjectDetector {
     const labelX = x1;
     const labelY = y1 - labelH > 2 ? y1 - labelH : y1;
 
-    // Label arka planı
-    ctx.globalAlpha = 0.8;
-    ctx.fillStyle = color;
+    // Label arka planı (en yakın nesne için farklı)
+    ctx.globalAlpha = isClosest ? 0.95 : 0.8;
+    ctx.fillStyle = isClosest ? '#ff3344' : drawColor;
     ctx.fillRect(labelX, labelY, labelW, labelH);
 
     // Label yazısı
@@ -625,6 +758,16 @@ export class ObjectDetector {
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
     ctx.stroke();
 
+    // En yakın nesne için ek vurgu (pulsing circle)
+    if (isClosest) {
+      ctx.strokeStyle = '#ff3344';
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 1.8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     ctx.globalAlpha = 1.0;
   }
 
@@ -634,7 +777,7 @@ export class ObjectDetector {
   _drawStatsOverlay(ctx, canvasWidth, canvasHeight) {
     const padding = 8;
     const boxW = 165;
-    const boxH = 78;
+    const boxH = this.enableDistance && this.avgDistance > 0 ? 90 : 78;
     const x = canvasWidth - boxW - padding;
     const y = 32;
 
@@ -659,6 +802,12 @@ export class ObjectDetector {
     ctx.fillText(`LATENCY : ${this.inferenceMs.toFixed(0)} ms`, x + 8, y + 47);
     ctx.fillText(`DET FPS : ${this.detFps}`, x + 8, y + 62);
 
+    // Mesafe istatistikleri (yeni satır)
+    if (this.enableDistance && this.avgDistance > 0) {
+      ctx.fillStyle = '#ffdd00';
+      ctx.fillText(`AVG DST : ${this.avgDistance}m`, x + 8, y + 77);
+    }
+
     // Confidence bar (en yüksek skor)
     if (this.detections.length > 0) {
       const topScore = this.detections[0].score;
@@ -676,6 +825,17 @@ export class ObjectDetector {
     // Tespit sayısı güncelle (DOM)
     if (this.detCountEl) {
       this.detCountEl.textContent = this.detections.length;
+    }
+
+    // En yakın mesafe güncelle (DOM)
+    if (this.detClosestDistEl) {
+      if (this.closestDetection && this.closestDetection.distance && this.closestDetection.distance < 9999) {
+        this.detClosestDistEl.textContent = `EN YAKIN: ${this.closestDetection.distance}m`;
+        this.detClosestDistEl.style.color = '#ff3344';
+      } else {
+        this.detClosestDistEl.textContent = 'EN YAKIN: --';
+        this.detClosestDistEl.style.color = '#666';
+      }
     }
   }
 

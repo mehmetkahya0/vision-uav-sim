@@ -463,7 +463,13 @@ class DroneSimulator {
 
       // AI Detection: FPV frame'den tespit çalıştır (her 6 frame'de)
       if (this.detector.isEnabled && this.frameCount % 6 === 0) {
-        this.detector.detect(this.droneCamCanvas);
+        // Physics bilgilerini detector'a geç (mesafe hesaplama için)
+        const physicsData = {
+          height: this.physics.height,
+          pitch: this.physics.pitch,
+          cameraPitch: this.physics.cameraPitch,
+        };
+        this.detector.detect(this.droneCamCanvas, physicsData);
       }
 
       // AI Detection: Bounding box + overlay çiz (her drone cam frame'inde)

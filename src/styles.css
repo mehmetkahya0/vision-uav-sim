@@ -792,3 +792,16 @@ html, body {
   font-family: 'Consolas', monospace;
   letter-spacing: 0.5px;
 }
+
+.det-distance {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(0, 255, 136, 0.1);
+}
+
+.det-dist {
+  font-size: 10px;
+  font-family: 'Consolas', monospace;
+  font-weight: bold;
+  letter-spacing: 0.8px;
+}
