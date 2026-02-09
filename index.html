@@ -49,6 +49,35 @@
     </div>
   </div>
 
+  <!-- ═══ HAVA DURUMU PANELİ ═══ -->
+  <div id="weatherPanel" class="hidden">
+    <div class="weather-header">
+      <span class="weather-icon">🌥️</span>
+      <span id="weatherStatus">HAVA DURUMU</span>
+    </div>
+    <div class="weather-body">
+      <div class="weather-row">
+        <span>SAAT: <strong id="weatherTime">07:00</strong></span>
+        <span id="weatherTemp" class="weather-temp">SICI: 12°C</span>
+      </div>
+      <div class="weather-row">
+        <span>RÜZGAR: <strong id="weatherWind">5 m/s</strong></span>
+        <span id="weatherDir">YÖN: 180°</span>
+      </div>
+      <div class="weather-row">
+        <span id="weatherVisibility">GÖRÜNÜRLÜk: 10km</span>
+      </div>
+      <div class="weather-row">
+        <span id="weatherCondition">KOŞULT: Açık</span>
+      </div>
+    </div>
+    <div class="weather-footer">
+      <span class="weather-key"><kbd>H</kbd> Aç/Kapat</span>
+      <span class="weather-key"><kbd>Y</kbd> +Hız</span>
+      <span class="weather-key"><kbd>U</kbd> -Hız</span>
+    </div>
+  </div>
+
   <!-- ═══ UYARI SİSTEMLERİ ═══ -->
   <div id="stallWarning" class="warning-overlay hidden">
     <span>⚠ STALL ⚠</span>
@@ -99,6 +128,18 @@
         <span id="hudFlightTime">TIME: 00:00</span>
       </div>
     </div>
+    <div class="hud-divider"></div>
+    <div class="hud-section">
+      <div class="hud-section-title">HAVA & ZAMAN</div>
+      <div class="hud-row">
+        <span id="hudGameTime">🕐 07:00</span>
+        <span id="hudWindInfo">💨 5m/s</span>
+      </div>
+      <div class="hud-row">
+        <span id="hudVisInfo">👁 10km</span>
+        <span id="hudTempInfo">🌡 12°C</span>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ THROTTLE BAR (Sağ dikey çubuk) ═══ -->
@@ -134,6 +175,9 @@
         <tr><td><kbd>B</kbd></td><td>AI Detection Aç/Kapat</td></tr>
         <tr><td><kbd>N / M</kbd></td><td>Hassasiyet Azalt/Artır</td></tr>
         <tr><td><kbd>G</kbd></td><td>Görüntü Dondur (5s Freeze)</td></tr>
+        <tr><td><kbd>O</kbd></td><td>OSM Binaları Aç/Kapat</td></tr>
+        <tr><td><kbd>H</kbd></td><td>Hava Durumu Paneli Aç/Kapat</td></tr>
+        <tr><td><kbd>Y / U</kbd></td><td>Rüzgar Hızı Artır/Azalt</td></tr>
         <tr><td><kbd>+/-</kbd></td><td>Kamera Zoom In/Out</td></tr>
         <tr><td><kbd>0</kbd></td><td>Zoom Sıfırla</td></tr>
         <tr><td><kbd>Scroll</kbd></td><td>Drone Cam Zoom (fare)</td></tr>

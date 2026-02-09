@@ -61,6 +61,11 @@ export class DronePhysics {
     this.cameraPitch = -45;
 
     // ═════════════════════════════════════════
+    // EASTER EGG: TURBO MODU
+    // ═════════════════════════════════════════
+    this.turboMode = false;  // Turbo aktifken 10000km/h'e kadar hız var
+
+    // ═════════════════════════════════════════
     // AERODİNAMİK & FİZİK SABİTLERİ
     // MQ-1 Predator referanslı parametreler
     // ═════════════════════════════════════════
@@ -167,6 +172,12 @@ export class DronePhysics {
     this.currentDrag = 0;         // N (anlık sürüklenme)
 
     // ═════════════════════════════════════════
+    // RÜZGAR SİSTEMİ (WIND)
+    // ═════════════════════════════════════════
+    this.windVector = { x: 0, y: 0, speed: 0 }; // Rüzgar (body frame)
+    this.trueAirspeed = 0;                      // TAS (airspeed + rüzgar etkisi)
+
+    // ═════════════════════════════════════════
     // ÇARPIŞMA & KAZA SİSTEMİ (COLLISION)
     // ═════════════════════════════════════════
     this.isCrashed = false;
@@ -210,9 +221,23 @@ export class DronePhysics {
   }
 
   // ═══════════════════════════════════════════
-  // ANA FİZİK GÜNCELLEME DÖNGÜSÜ
-  // Her frame'de çağrılır (requestAnimationFrame)
+  // RÜZGAR VEKTÖRÜNÜ AYARLA
   // ═══════════════════════════════════════════
+  setWind(windVector) {
+    /**
+     * Rüzgar vektörünü ayarla
+     * windVector = { x, y, speed }
+     * x = body-frame X (forward), y = body-frame Y (right)
+     */
+    if (windVector) {
+      this.windVector = { ...windVector };
+      // True airspeed = ground speed ± wind effect
+      this.trueAirspeed = Math.sqrt(
+        Math.pow(this.airspeed - windVector.x, 2) + 
+        Math.pow(windVector.y, 2)
+      );
+    }
+  }
   update(dt) {
     if (dt <= 0 || !this.isOn) return;
     dt = Math.min(dt, 0.05); // Maksimum 50ms adım (min 20 FPS)
@@ -224,8 +249,13 @@ export class DronePhysics {
     // ────────────────────────────────────────────
     // ADIM 1: GAZ (THROTTLE) KONTROLÜ
     // ────────────────────────────────────────────
-    this.throttle += this.input.throttle * cfg.throttleRate * dt;
-    this.throttle = Cesium.Math.clamp(this.throttle, 0, 100);
+    if (this.turboMode) {
+      // Turbo modunda throttle otomatik %100
+      this.throttle = 100;
+    } else {
+      this.throttle += this.input.throttle * cfg.throttleRate * dt;
+      this.throttle = Cesium.Math.clamp(this.throttle, 0, 100);
+    }
     const throttleRatio = this.throttle / 100;
 
     // ────────────────────────────────────────────
@@ -301,8 +331,15 @@ export class DronePhysics {
     // C_D0: parasit sürüklenme (gövde, kanat profili)
     // K·C_L²: indüklenmiş sürüklenme (kanat ucu vorteksleri)
     // ══════════════════════════════════════════
-    const CD = cfg.CD0 + cfg.K * CL * CL;
-    const drag = q_dyn * cfg.wingArea * CD;
+    let CD = cfg.CD0 + cfg.K * CL * CL;
+    let dragForce = q_dyn * cfg.wingArea * CD;
+    
+    // Turbo modunda drag'\u0131 neredeyse tamamen yok et
+    if (this.turboMode) {
+      dragForce *= 0.001; // Drag'\u0131 %99.9 azalt (1/1000)
+    }
+    
+    const drag = dragForce;
     this.currentDrag = drag;
 
     // ══════════════════════════════════════════
@@ -310,11 +347,26 @@ export class DronePhysics {
     // Pervane verimi yüksek hızlarda azalır
     // T = T_max · δ_t · η_prop
     // ══════════════════════════════════════════
-    const propEfficiency = Math.max(0.15, 1.0 - V * V / (120 * 120));
-    const targetThrust = (cfg.idleThrust + (cfg.maxThrust - cfg.idleThrust) * throttleRatio) * propEfficiency;
+    let propEfficiency = Math.max(0.15, 1.0 - V * V / (120 * 120));
+    let maxThrustMultiplier = 1;
+    
+    // Turbo modunda:
+    // - Pervane verimliliğini bypass et (full power)
+    // - Motor gücünü 200x arttır (ultra boost)
+    if (this.turboMode) {
+      propEfficiency = 1.0;
+      maxThrustMultiplier = 200; // Çok yüksek thrust
+    }
+    
+    const targetThrust = (cfg.idleThrust + (cfg.maxThrust - cfg.idleThrust) * throttleRatio * maxThrustMultiplier) * propEfficiency;
 
     // Motor tepki gecikmesi (spool-up/spool-down)
-    this.currentThrust += (targetThrust - this.currentThrust) * cfg.thrustLag * dt;
+    if (this.turboMode) {
+      // Turbo: Doğrudan maksimum thrust set et (motor limitatörü bypass)
+      this.currentThrust = 1000000; // 1 milyon Newton
+    } else {
+      this.currentThrust += (targetThrust - this.currentThrust) * cfg.thrustLag * dt;
+    }
 
     // ────────────────────────────────────────────
     // ADIM 4: AÇISAL DİNAMİKLER
@@ -444,7 +496,8 @@ export class DronePhysics {
 
     // ── G-Kuvveti Hız Cezası ──
     // 1.5G üzerindeki her G için hız kaybı
-    if (this.gForce > 1.5) {
+    // (turbo modunda devre dışı bırak)
+    if (!this.turboMode && this.gForce > 1.5) {
       const excessG = this.gForce - 1.5;
       const speedPenalty = excessG * cfg.gForceSpeedPenalty;
       this.airspeed *= (1 - speedPenalty * dt);
@@ -452,10 +505,13 @@ export class DronePhysics {
 
     // ── Havahızı Güncellemesi ──
     this.airspeed += aLongitudinal * dt;
-    this.airspeed = Cesium.Math.clamp(this.airspeed, 0, cfg.maxAirspeed);
+    
+    // Turbo modunda hız sınırı olmaz; normal modda 65 m/s limit (234 km/h)
+    const speedLimit = this.turboMode ? 2778 : cfg.maxAirspeed; // 2778 m/s = 10000 km/h
+    this.airspeed = Cesium.Math.clamp(this.airspeed, 0, speedLimit);
 
     // Stall'da minimum hızın altına düşebilir (yerçekimi kazandırır)
-    if (this.airspeed < cfg.minAirspeed && this.pitch > -10) {
+    if (this.airspeed < cfg.minAirspeed && this.pitch > -10 && !this.turboMode) {
       this.isStalling = true;
       this.stallIntensity = Math.max(this.stallIntensity,
         (cfg.minAirspeed - this.airspeed) / cfg.minAirspeed

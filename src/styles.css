@@ -763,6 +763,104 @@ html, body {
   }
 }
 
+/* ═══ HAVA DURUMU PANELİ ═══ */
+#weatherPanel {
+  position: absolute;
+  top: 20px;
+  right: 220px;
+  z-index: 50;
+  background: rgba(0, 20, 40, 0.88);
+  border: 1px solid rgba(0, 180, 255, 0.35);
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 200px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5),
+              0 0 30px rgba(0, 180, 255, 0.05),
+              inset 0 0 30px rgba(0, 180, 255, 0.02);
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+#weatherPanel.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+}
+
+.weather-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.weather-icon {
+  font-size: 16px;
+  animation: weather-pulse 3s infinite;
+}
+
+#weatherStatus {
+  color: #00b4ff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  text-shadow: 0 0 8px rgba(0, 180, 255, 0.4);
+}
+
+.weather-body {
+  margin-bottom: 8px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  color: #00d4ff;
+  letter-spacing: 1px;
+}
+
+.weather-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  gap: 10px;
+}
+
+.weather-body strong {
+  color: #00d4ff;
+  font-size: 14px;
+  text-shadow: 0 0 8px rgba(0, 180, 255, 0.3);
+}
+
+.weather-temp {
+  color: #ff9944;
+}
+
+.weather-footer {
+  display: flex;
+  gap: 12px;
+  border-top: 1px solid rgba(0, 180, 255, 0.15);
+  padding-top: 6px;
+}
+
+.weather-key {
+  font-size: 9px;
+  color: rgba(0, 180, 255, 0.5);
+  font-family: 'Consolas', monospace;
+}
+
+.weather-key kbd {
+  background: rgba(0, 180, 255, 0.12);
+  border: 1px solid rgba(0, 180, 255, 0.3);
+  color: #00b4ff;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  margin-right: 3px;
+}
+
+@keyframes weather-pulse {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  50% { transform: scale(1.1) rotate(10deg); }
+}
+
 /* ═══ AI Badge (Drone Cam Overlay) ═══ */
 .ai-badge {
   position: absolute;

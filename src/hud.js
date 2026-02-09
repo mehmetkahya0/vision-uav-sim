@@ -28,6 +28,11 @@ export class HUD {
       lon: document.getElementById('hudLon'),
       battery: document.getElementById('hudBattery'),
       flightTime: document.getElementById('hudFlightTime'),
+      // ── Hava & Zaman Göstergeleri ──
+      gameTime: document.getElementById('hudGameTime'),
+      windInfo: document.getElementById('hudWindInfo'),
+      visInfo: document.getElementById('hudVisInfo'),
+      tempInfo: document.getElementById('hudTempInfo'),
     };
 
     // ── Uyarı Elemanları ──
@@ -182,9 +187,9 @@ export class HUD {
       }
     }
 
-    // OVERSPEED UYARISI
+    // OVERSPEED UYARISI (turbo mode'da gösterilmez)
     if (this.overspeedWarning) {
-      if (fd.airspeed > physics.config.maxAirspeed * 0.92) {
+      if (!physics.turboMode && fd.airspeed > physics.config.maxAirspeed * 0.92) {
         this.overspeedWarning.classList.remove('hidden');
       } else {
         this.overspeedWarning.classList.add('hidden');
@@ -218,5 +223,35 @@ export class HUD {
     const dirs = ['K', 'KD', 'D', 'GD', 'G', 'GB', 'B', 'KB'];
     const index = Math.round(heading / 45) % 8;
     return dirs[index];
+  }
+
+  /**
+   * Hava durumu bilgisini güncelle
+   */
+  updateWeather(weather) {
+    if (!weather) return;
+
+    // Saat
+    if (this.elements.gameTime) {
+      this.elements.gameTime.textContent = `🕐 ${weather.getTimeString()}`;
+    }
+
+    // Rüzgar
+    if (this.elements.windInfo) {
+      const windStr = `💨 ${weather.weather.windSpeed.toFixed(1)}m/s`;
+      this.elements.windInfo.textContent = windStr;
+    }
+
+    // Görünürlük
+    if (this.elements.visInfo) {
+      const visStr = `👁 ${(weather.weather.visibility / 1000).toFixed(1)}km`;
+      this.elements.visInfo.textContent = visStr;
+    }
+
+    // Sıcaklık
+    if (this.elements.tempInfo) {
+      const tempStr = `🌡 ${weather.weather.temperature}°C`;
+      this.elements.tempInfo.textContent = tempStr;
+    }
   }
 }

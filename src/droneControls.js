@@ -104,6 +104,39 @@ export class DroneControls {
         }
       }
 
+      // OSM Binaları aç/kapa (O tuşu)
+      if (e.code === 'KeyO') {
+        if (window.sim && window.sim.toggleOSMBuildings) {
+          window.sim.toggleOSMBuildings();
+        }
+      }
+
+      // Hava Durumu Paneli (H tuşu)
+      if (e.code === 'KeyH') {
+        const weatherPanel = document.getElementById('weatherPanel');
+        if (weatherPanel) {
+          weatherPanel.classList.toggle('hidden');
+        }
+      }
+
+      // Rüzgar Hızını Artır (Y tuşu)
+      if (e.code === 'KeyY') {
+        if (window.sim && window.sim.weather) {
+          const newSpeed = Math.min(window.sim.weather.weather.windSpeed + 2, 50);
+          window.sim.weather.setWindSpeed(newSpeed);
+          console.log(`💨 Rüzgar: ${newSpeed.toFixed(1)} m/s`);
+        }
+      }
+
+      // Rüzgar Hızını Azalt (U tuşu)
+      if (e.code === 'KeyU') {
+        if (window.sim && window.sim.weather) {
+          const newSpeed = Math.max(window.sim.weather.weather.windSpeed - 2, 0);
+          window.sim.weather.setWindSpeed(newSpeed);
+          console.log(`💨 Rüzgar: ${newSpeed.toFixed(1)} m/s`);
+        }
+      }
+
       // Yardım paneli
       if (e.code === 'Slash' && e.shiftKey) {
         this.toggleHelp();
