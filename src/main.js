@@ -232,6 +232,7 @@ class DroneSimulator {
     const headingRad = Cesium.Math.toRadians(this.physics.heading);
     const cameraPitchRad = Cesium.Math.toRadians(this.physics.cameraPitch);
 
+    // Kamera ayarlarını güncelle (smooth animation olmadan direkt)
     camera.setView({
       destination: droneCartesian,
       orientation: {
@@ -239,6 +240,8 @@ class DroneSimulator {
         pitch: cameraPitchRad,
         roll: 0,
       },
+      duration: 0,  // Animation yok, direkt geç
+      endTransform: Cesium.Matrix4.IDENTITY,
     });
 
     // Scene'i render et (clock tick'lemeden)
@@ -699,8 +702,14 @@ class DroneSimulator {
     this.clock.deltaTime = (now - this.clock.lastTime) / 1000;
     this.clock.lastTime = now;
 
-    // DeltaTime sınırla (tab değiştirme vs.)
-    if (this.clock.deltaTime > 0.1) this.clock.deltaTime = 0.016;
+    // DeltaTime sınırla (tab değiştirme, frame drop vs.)
+    // 50ms'den fazla = glitch yapıcı tab geçişi, 0'la
+    if (this.clock.deltaTime > 0.05) {
+      // Tab geçişi tespit - önceki frame ile ortalama al
+      this.clock.deltaTime = Math.min(0.033, this.clock.deltaTime / 2);
+    }
+    // Minimum 1ms
+    if (this.clock.deltaTime < 0.001) this.clock.deltaTime = 0.001;
 
     // ── Kamera modunu senkronize et ──
     if (this.controls.cameraMode !== this.droneCamera.mode) {
@@ -740,13 +749,13 @@ class DroneSimulator {
     this.frameCount++;
 
     // Drone cam capture sıklığı: kalite moduna göre dinamik
-    // Performance: her 3 frame (det kapalı) / her 2 frame (det açık)
-    // Quality: her 2 frame (det kapalı) / her 1 frame (det açık)
+    // Performance: her 2 frame (işlemci yüksek değilse)
+    // Quality: her 1 frame (maksimum smoothness)
     let camCaptureInterval;
     if (this.qualityMode === 'quality') {
-      camCaptureInterval = this.detector.isEnabled ? 1 : 2;
+      camCaptureInterval = 1;  // Her frame render
     } else {
-      camCaptureInterval = this.detector.isEnabled ? 2 : 3;
+      camCaptureInterval = 1;  // Her frame render (glitch sorunu çözmek için)
     }
 
     // Freeze aktifse frozen frame çiz, canlı render atla
@@ -771,9 +780,9 @@ class DroneSimulator {
         );
       }
 
-      // AI Detection: FPV frame'den tespit çalıştır (interval'e göre)
-      // Performance: her 6 frame'de, Quality: her 4 frame'de
-      const detectionInterval = this.qualityMode === 'quality' ? 4 : 6;
+      // AI Detection: FPV frame'den tespit çalıştır (seyrek)
+      // Performance: her 8 frame'de, Quality: her 6 frame'de
+      const detectionInterval = this.qualityMode === 'quality' ? 6 : 8;
       if (this.detector.isEnabled && this.frameCount % detectionInterval === 0) {
         // Physics bilgilerini detector'a geç (mesafe hesaplama için)
         const physicsData = {
@@ -885,9 +894,9 @@ class DroneSimulator {
         `${pos.latitude.toFixed(4)}°N  ${pos.longitude.toFixed(4)}°E  ${pos.height.toFixed(0)}m`;
     }
 
-    // Render iste (küçük modda seyrek, expanded modda sık)
-    const minimapSmallInterval = this.qualityMode === 'quality' ? 4 : 6;
-    const minimapExpandedInterval = this.qualityMode === 'quality' ? 2 : 3;
+    // Render iste (minimap - seyrek update, temel glitch sorunu değil)
+    const minimapSmallInterval = this.qualityMode === 'quality' ? 3 : 4;
+    const minimapExpandedInterval = this.qualityMode === 'quality' ? 2 : 2;
     
     if (this.minimapExpanded) {
       if (this.frameCount % minimapExpandedInterval === 0) {
@@ -907,8 +916,9 @@ class DroneSimulator {
   updateTerrainHeight() {
     const pos = this.physics.getPosition();
     
-    // Terrain height sampling: Performance modunda 12, Quality'de 8 frame'de
-    const terrainSamplingInterval = this.qualityMode === 'quality' ? 8 : 12;
+    // Terrain height sampling: seyrek ama glitch sorunu değil
+    // Performance: her 16 frame, Quality: her 12 frame
+    const terrainSamplingInterval = this.qualityMode === 'quality' ? 12 : 16;
     if (this.frameCount % terrainSamplingInterval === 0) {
       const terrainProvider = this.viewer.scene.globe.terrainProvider;
       const cartographicArray = [
