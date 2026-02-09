@@ -210,14 +210,190 @@ class DroneSimulator {
   }
 
   setupMinimap() {
-    const minimapCanvas = document.getElementById('minimapCanvas');
-    if (!minimapCanvas) return;
+    const container = document.getElementById('minimapContainer');
+    if (!container) return;
 
-    this.minimapCtx = minimapCanvas.getContext('2d');
-    this.minimapCanvas = minimapCanvas;
+    this.minimapExpanded = false;
 
-    minimapCanvas.width = 180;
-    minimapCanvas.height = 140;
+    // ── İkinci Cesium Viewer: 2D Dünya Haritası ──
+    this.minimapViewer = new Cesium.Viewer('minimapViewer', {
+      sceneMode: Cesium.SceneMode.SCENE2D,
+      baseLayerPicker: false,
+      geocoder: false,
+      homeButton: false,
+      sceneModePicker: false,
+      navigationHelpButton: false,
+      animation: false,
+      timeline: false,
+      fullscreenButton: false,
+      vrButton: false,
+      infoBox: false,
+      selectionIndicator: false,
+      shadows: false,
+      shouldAnimate: false,
+      requestRenderMode: true,
+      maximumRenderTimeChange: Infinity,
+      targetFrameRate: 10,
+      msaaSamples: 1,
+      contextOptions: {
+        webgl: { antialias: false },
+      },
+    });
+
+    // Minimap kamera kontrollerini kısıtla (küçük modda)
+    const msc = this.minimapViewer.scene.screenSpaceCameraController;
+    msc.enableRotate = false;
+    msc.enableTranslate = false;
+    msc.enableZoom = false;
+    msc.enableTilt = false;
+    msc.enableLook = false;
+
+    // Drone pozisyon marker (kırmızı nokta)
+    this.minimapDroneEntity = this.minimapViewer.entities.add({
+      name: 'Drone Position',
+      position: Cesium.Cartesian3.fromDegrees(
+        ISTANBUL.longitude, ISTANBUL.latitude, 0
+      ),
+      point: {
+        pixelSize: 10,
+        color: Cesium.Color.fromCssColorString('#ff3344'),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    });
+
+    // Drone yön çizgisi (heading göstergesi)
+    this.minimapHeadingEntity = this.minimapViewer.entities.add({
+      name: 'Drone Heading',
+      polyline: {
+        positions: Cesium.Cartesian3.fromDegreesArray([
+          ISTANBUL.longitude, ISTANBUL.latitude,
+          ISTANBUL.longitude, ISTANBUL.latitude + 0.002,
+        ]),
+        width: 2,
+        material: new Cesium.ColorMaterialProperty(
+          Cesium.Color.fromCssColorString('#00ff88').withAlpha(0.8)
+        ),
+        clampToGround: true,
+      },
+    });
+
+    // Drone iz çizgisi (trail)
+    this.minimapTrailPositions = [];
+    this.minimapTrailEntity = this.minimapViewer.entities.add({
+      name: 'Drone Trail',
+      polyline: {
+        positions: new Cesium.CallbackProperty(() => {
+          return this.minimapTrailPositions;
+        }, false),
+        width: 1.5,
+        material: new Cesium.ColorMaterialProperty(
+          Cesium.Color.fromCssColorString('#00d4ff').withAlpha(0.4)
+        ),
+        clampToGround: true,
+      },
+    });
+    this.lastTrailTime = 0;
+
+    // Başlangıç kamera pozisyonu (İstanbul üzeri)
+    this.minimapViewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(
+        ISTANBUL.longitude, ISTANBUL.latitude, 8000
+      ),
+    });
+
+    // Koordinat bilgi elemanı
+    this.minimapCoordsEl = document.getElementById('minimapCoords');
+
+    // ── Backdrop elemanı (expanded modda arka plan) ──
+    this.minimapBackdrop = document.createElement('div');
+    this.minimapBackdrop.id = 'minimapBackdrop';
+    document.body.appendChild(this.minimapBackdrop);
+
+    // ── Tıklama: Küçük → Büyük ──
+    container.addEventListener('click', (e) => {
+      // Close butonuna basıldıysa yoksay
+      if (e.target.id === 'minimapClose') return;
+      if (!this.minimapExpanded) {
+        this.expandMinimap();
+      }
+    });
+
+    // ── Close butonu: Büyük → Küçük ──
+    const closeBtn = document.getElementById('minimapClose');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.collapseMinimap();
+      });
+    }
+
+    // ── Backdrop tıklama: Kapat ──
+    this.minimapBackdrop.addEventListener('click', () => {
+      this.collapseMinimap();
+    });
+
+    // ESC tuşu ile kapat
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape' && this.minimapExpanded) {
+        this.collapseMinimap();
+      }
+    });
+  }
+
+  expandMinimap() {
+    const container = document.getElementById('minimapContainer');
+    const closeBtn = document.getElementById('minimapClose');
+    if (!container) return;
+
+    this.minimapExpanded = true;
+    container.classList.remove('minimap-small');
+    container.classList.add('minimap-expanded');
+    closeBtn?.classList.remove('hidden');
+    this.minimapBackdrop?.classList.add('visible');
+
+    // Expanded modda kamera kontrollerini aç (zoom/pan)
+    const msc = this.minimapViewer.scene.screenSpaceCameraController;
+    msc.enableTranslate = true;
+    msc.enableZoom = true;
+
+    // Daha yüksekten bak (tüm dünya)
+    this.minimapViewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(
+        this.physics.longitude, this.physics.latitude, 5000000
+      ),
+      duration: 0.8,
+    });
+
+    // Resize tetikle
+    setTimeout(() => {
+      this.minimapViewer.resize();
+      this.minimapViewer.scene.requestRender();
+    }, 450);
+  }
+
+  collapseMinimap() {
+    const container = document.getElementById('minimapContainer');
+    const closeBtn = document.getElementById('minimapClose');
+    if (!container) return;
+
+    this.minimapExpanded = false;
+    container.classList.remove('minimap-expanded');
+    container.classList.add('minimap-small');
+    closeBtn?.classList.add('hidden');
+    this.minimapBackdrop?.classList.remove('visible');
+
+    // Kamera kontrollerini tekrar kapat
+    const msc = this.minimapViewer.scene.screenSpaceCameraController;
+    msc.enableTranslate = false;
+    msc.enableZoom = false;
+
+    // Resize tetikle
+    setTimeout(() => {
+      this.minimapViewer.resize();
+      this.minimapViewer.scene.requestRender();
+    }, 450);
   }
 
   /**
@@ -270,104 +446,54 @@ class DroneSimulator {
   }
 
   updateMinimap() {
-    if (!this.minimapCtx) return;
+    if (!this.minimapViewer) return;
 
-    const ctx = this.minimapCtx;
-    const w = this.minimapCanvas.width;
-    const h = this.minimapCanvas.height;
     const pos = this.physics.getPosition();
-    const fd = this.physics.getFlightData();
+    const now = performance.now();
 
-    // Arka plan
-    ctx.fillStyle = '#0a1628';
-    ctx.fillRect(0, 0, w, h);
+    // ── Drone pozisyon marker'ını güncelle ──
+    const droneCart = Cesium.Cartesian3.fromDegrees(pos.longitude, pos.latitude, 0);
+    this.minimapDroneEntity.position = droneCart;
 
-    // Izgara
-    ctx.strokeStyle = 'rgba(0, 212, 255, 0.08)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < w; i += 20) {
-      ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, h);
-      ctx.stroke();
+    // ── Heading çizgisini güncelle ──
+    const headingRad = Cesium.Math.toRadians(this.physics.heading);
+    const lineLen = this.minimapExpanded ? 0.01 : 0.003;
+    const endLon = pos.longitude + Math.sin(headingRad) * lineLen;
+    const endLat = pos.latitude + Math.cos(headingRad) * lineLen;
+    this.minimapHeadingEntity.polyline.positions = Cesium.Cartesian3.fromDegreesArray([
+      pos.longitude, pos.latitude,
+      endLon, endLat,
+    ]);
+
+    // ── İz çizgisi (trail) - her 500ms bir nokta ekle ──
+    if (now - this.lastTrailTime > 500) {
+      this.minimapTrailPositions.push(
+        Cesium.Cartesian3.fromDegrees(pos.longitude, pos.latitude, 0)
+      );
+      // Maksimum 500 nokta tut
+      if (this.minimapTrailPositions.length > 500) {
+        this.minimapTrailPositions.shift();
+      }
+      this.lastTrailTime = now;
     }
-    for (let i = 0; i < h; i += 20) {
-      ctx.beginPath();
-      ctx.moveTo(0, i);
-      ctx.lineTo(w, i);
-      ctx.stroke();
+
+    // ── Kamerayı drone'a merkezle (küçük modda) ──
+    if (!this.minimapExpanded) {
+      this.minimapViewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(
+          pos.longitude, pos.latitude, 5000
+        ),
+      });
     }
 
-    const cx = w / 2;
-    const cy = h / 2;
+    // ── Koordinat bilgisini güncelle ──
+    if (this.minimapCoordsEl) {
+      this.minimapCoordsEl.textContent =
+        `${pos.latitude.toFixed(4)}°N  ${pos.longitude.toFixed(4)}°E  ${pos.height.toFixed(0)}m`;
+    }
 
-    // ── Bank açısı göstergesi (ufuk çizgisi) ──
-    const rollRad = (this.physics.roll * Math.PI) / 180;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rollRad);
-    ctx.strokeStyle = 'rgba(0, 212, 255, 0.15)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-40, 0);
-    ctx.lineTo(40, 0);
-    ctx.stroke();
-    ctx.restore();
-
-    // ── Yön göstergesi (üçgen) ──
-    const headingRad = (this.physics.heading * Math.PI) / 180;
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(headingRad);
-
-    // Yön çizgisi
-    ctx.strokeStyle = 'rgba(0, 255, 136, 0.6)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(0, -22);
-    ctx.stroke();
-
-    // Drone ikonu (üçgen)
-    ctx.fillStyle = fd.isStalling ? '#ff3344' : '#00d4ff';
-    ctx.beginPath();
-    ctx.moveTo(0, -8);
-    ctx.lineTo(-5, 5);
-    ctx.lineTo(5, 5);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.restore();
-
-    // Dış halka
-    ctx.strokeStyle = 'rgba(0, 212, 255, 0.2)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(cx, cy, 30, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Koordinat ve durum
-    ctx.fillStyle = 'rgba(0, 212, 255, 0.6)';
-    ctx.font = '9px Consolas, monospace';
-    ctx.textAlign = 'left';
-    ctx.fillText(`${pos.latitude.toFixed(4)}°N`, 4, 12);
-    ctx.fillText(`${pos.longitude.toFixed(4)}°E`, 4, 24);
-    ctx.fillText(`${pos.height.toFixed(0)}m`, 4, 36);
-
-    // G-Force göstergesi
-    ctx.fillStyle = fd.gForce > 2.0 ? '#ffaa00' : 'rgba(0, 255, 136, 0.5)';
-    ctx.fillText(`${fd.gForce.toFixed(1)}G`, 4, h - 8);
-
-    // Pusula
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.font = '10px Consolas';
-    ctx.textAlign = 'center';
-    ctx.fillText('N', cx, 12);
-    ctx.fillText('S', cx, h - 4);
-    ctx.textAlign = 'left';
-    ctx.fillText('W', 4, h / 2 + 4);
-    ctx.textAlign = 'right';
-    ctx.fillText('E', w - 4, h / 2 + 4);
+    // Render iste
+    this.minimapViewer.scene.requestRender();
   }
 }
 

@@ -77,6 +77,8 @@
     <div class="throttle-value">0%</div>
   </div>
 
+
+
   <!-- ═══ KONTROL YARDIMI ═══ -->
   <div id="controlsHelp">
     <button id="toggleHelp">?</button>
@@ -93,7 +95,8 @@
         <tr><td><kbd>L.Ctrl</kbd></td><td>Throttle - (Gaz Azalt)</td></tr>
         <tr><td><kbd>R / F</kbd></td><td>Kamera Yukarı / Aşağı</td></tr>
         <tr><td><kbd>T</kbd></td><td>Kamera Sıfırla</td></tr>
-        <tr><td><kbd>V</kbd></td><td>Kamera Modu (Takip/Cockpit)</td></tr>
+        <tr><td><kbd>V</kbd></td><td>Kamera Modu (Takip/Cockpit/Orbit)</td></tr>
+        <tr><td><kbd>Mouse</kbd></td><td>Orbit: Sürükle=Dön, Scroll=Zoom</td></tr>
         <tr><td><kbd>C</kbd></td><td>Drone Cam (PiP/Tam Ekran)</td></tr>
       </table>
       <div class="help-physics-note">
@@ -102,9 +105,17 @@
     </div>
   </div>
 
-  <!-- ═══ MİNİHARİTA ═══ -->
-  <div id="minimapContainer">
-    <canvas id="minimapCanvas"></canvas>
+  <!-- ═══ MİNİHARİTA (Gerçek Dünya Haritası) ═══ -->
+  <div id="minimapContainer" class="minimap-small" title="Tıkla: Tam harita görünümü">
+    <div id="minimapViewer"></div>
+    <div id="minimapOverlay">
+      <span id="minimapLabel">MAP</span>
+      <button id="minimapClose" class="hidden" title="Küçült">✕</button>
+    </div>
+    <div id="minimapCrosshair">+</div>
+    <div id="minimapInfo">
+      <span id="minimapCoords"></span>
+    </div>
   </div>
 
   <script type="module" src="/src/main.js"></script>

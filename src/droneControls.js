@@ -49,7 +49,9 @@ export class DroneControls {
 
       // Kamera modu değiştir
       if (e.code === 'KeyV') {
-        this.cameraMode = this.cameraMode === 'follow' ? 'cockpit' : 'follow';
+        const modes = ['follow', 'cockpit', 'orbit'];
+        const idx = modes.indexOf(this.cameraMode);
+        this.cameraMode = modes[(idx + 1) % modes.length];
       }
 
       // Kamera boyut değişikliği

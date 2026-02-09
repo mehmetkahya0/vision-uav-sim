@@ -1,15 +1,15 @@
 /**
  * ═══════════════════════════════════════════════════════════════════
  * DRONE KAMERA SİSTEMİ
- * Takip Kamerası + Cockpit Kamerası
+ * Takip + Cockpit + 360° Orbit Kamerası
  * ═══════════════════════════════════════════════════════════════════
  *
- * İki kamera modu:
- * 1. Follow (Takip): İHA'nın arkasından ve yukarısından izler
- *    - Roll ile hafif eğilme efekti
- *    - Yumuşak geçişler (lerp)
- * 2. Cockpit: İHA'nın içinden bakar
- *    - Tam heading/pitch/roll izleme
+ * Üç kamera modu:
+ * 1. Follow (Takip):  İHA'nın arkasından ve yukarısından izler
+ * 2. Cockpit:         İHA'nın içinden bakar (FPV)
+ * 3. Orbit (360°):    Mouse ile drone etrafında serbest dönüş
+ *    - Sol tuş sürükle: Yörünge döndürme
+ *    - Scroll:          Zoom (yakın/uzak)
  */
 import * as Cesium from 'cesium';
 
@@ -19,23 +19,115 @@ export class DroneCamera {
     this.physics = physics;
 
     // ── Takip Kamerası Ayarları ──
-    this.followDistance = 45;      // metre arkada
-    this.followHeight = 18;        // metre yukarıda
-    this.followSmoothing = 2.8;    // Yumuşatma faktörü (düşük = daha yavaş)
-    this.rollInfluence = 0.15;     // Kameranın roll'dan etkilenme oranı
+    this.followDistance = 45;
+    this.followHeight = 18;
+    this.followSmoothing = 2.8;
+    this.rollInfluence = 0.15;
 
     // Mevcut kamera pozisyonu (yumuşatılmış)
     this.currentCamPosition = null;
     this.currentCamHeading = 0;
     this.currentCamRoll = 0;
 
-    // Kamera modu: 'follow' veya 'cockpit'
-    this.mode = 'follow';
+    // ── Orbit (360°) Kamerası Ayarları ──
+    this.orbitYaw = 0;            // Yatay açı (derece, 0=arka)
+    this.orbitPitch = -20;        // Dikey açı (derece, - = aşağıdan)
+    this.orbitDistance = 60;      // Drone'a uzaklık (metre)
+    this.orbitMinDist = 15;       // Minimum zoom
+    this.orbitMaxDist = 300;      // Maksimum zoom
+    this.orbitSmoothing = 5.0;    // Yumuşatma
+    this.orbitSensitivity = 0.3;  // Mouse hassasiyeti
+
+    // Orbit state
+    this.isDragging = false;
+    this.lastMouseX = 0;
+    this.lastMouseY = 0;
+    this.currentOrbitPosition = null;
+
+    // Kamera modu
+    this.mode = 'follow'; // 'follow' | 'cockpit' | 'orbit'
+
+    // Mouse dinleyicilerini kur
+    this._setupMouseListeners();
+  }
+
+  /**
+   * Mouse Dinleyicileri (Orbit kamera için)
+   * Cesium'un ScreenSpaceEventHandler'ını kullanır.
+   * DOM eventleri Cesium tarafından yutulduğu için
+   * Cesium'un kendi olay sistemi zorunludur.
+   */
+  _setupMouseListeners() {
+    const canvas = this.mainViewer.canvas;
+    const handler = new Cesium.ScreenSpaceEventHandler(canvas);
+
+    // Sol tuş basılı → sürükleme başla
+    handler.setInputAction((click) => {
+      if (this.mode !== 'orbit') return;
+      this.isDragging = true;
+      this.lastMouseX = click.position.x;
+      this.lastMouseY = click.position.y;
+      canvas.style.cursor = 'grabbing';
+    }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+    // Mouse hareket → orbit döndürme
+    handler.setInputAction((movement) => {
+      if (!this.isDragging || this.mode !== 'orbit') return;
+
+      const dx = movement.endPosition.x - this.lastMouseX;
+      const dy = movement.endPosition.y - this.lastMouseY;
+      this.lastMouseX = movement.endPosition.x;
+      this.lastMouseY = movement.endPosition.y;
+
+      // Yaw (yatay dönüş) ve Pitch (dikey dönüş)
+      this.orbitYaw += dx * this.orbitSensitivity;
+      this.orbitPitch -= dy * this.orbitSensitivity;
+
+      // Pitch sınırlama (-80° ile +60° arası)
+      this.orbitPitch = Cesium.Math.clamp(this.orbitPitch, -80, 60);
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+    // Tuş bırakıldı → sürükleme bitir
+    handler.setInputAction(() => {
+      this.isDragging = false;
+      if (this.mode === 'orbit') {
+        canvas.style.cursor = 'grab';
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_UP);
+
+    // Mouse tekerleği → zoom (yakınlaş/uzaklaş)
+    handler.setInputAction((delta) => {
+      if (this.mode !== 'orbit') return;
+      const zoomSpeed = this.orbitDistance * 0.08;
+      // delta > 0 → uzaklaş, delta < 0 → yakınlaş
+      this.orbitDistance += delta > 0 ? zoomSpeed : -zoomSpeed;
+      this.orbitDistance = Cesium.Math.clamp(
+        this.orbitDistance,
+        this.orbitMinDist,
+        this.orbitMaxDist
+      );
+    }, Cesium.ScreenSpaceEventType.WHEEL);
+
+    // Saklayalım (cleanup için)
+    this._handler = handler;
   }
 
   setMode(mode) {
     this.mode = mode;
-    this.currentCamPosition = null; // Pozisyonu sıfırla
+    this.currentCamPosition = null;
+    this.currentOrbitPosition = null;
+
+    const canvas = this.mainViewer.canvas;
+
+    if (mode === 'orbit') {
+      // Orbit moduna geçerken mevcut bakışı başlangıç açısı yap
+      this.orbitYaw = 180; // Arkasından başla
+      this.orbitPitch = -20;
+      canvas.style.cursor = 'grab';
+    } else {
+      canvas.style.cursor = 'default';
+      this.isDragging = false;
+    }
   }
 
   update(dt) {
@@ -48,6 +140,8 @@ export class DroneCamera {
 
     if (this.mode === 'cockpit') {
       this.updateCockpitCamera(dt, pos, droneCartesian);
+    } else if (this.mode === 'orbit') {
+      this.updateOrbitCamera(dt, pos, droneCartesian);
     } else {
       this.updateFollowCamera(dt, pos, droneCartesian);
     }
@@ -55,20 +149,14 @@ export class DroneCamera {
 
   /**
    * Takip Kamerası
-   * İHA'nın arkasından ve yukarısından izler.
-   * Heading'e göre kamera pozisyonunu hesaplar.
-   * Roll açısından hafif etkilenir (sinematik efekt).
    */
   updateFollowCamera(dt, pos, droneCartesian) {
     const headingRad = Cesium.Math.toRadians(this.physics.heading);
     const rollRad = Cesium.Math.toRadians(this.physics.roll);
 
-    // ── Kameranın olması gereken pozisyon ──
-    // İHA'nın heading'inin tam tersi yönünde, arkada ve yukarıda
     const offsetX = -Math.sin(headingRad) * this.followDistance;
     const offsetY = -Math.cos(headingRad) * this.followDistance;
 
-    // Roll'un lateral etkisi (kamera hafifçe kayar)
     const lateralOffset = Math.sin(rollRad) * this.followDistance * 0.15;
     const lateralX = Math.cos(headingRad) * lateralOffset;
     const lateralY = -Math.sin(headingRad) * lateralOffset;
@@ -79,7 +167,6 @@ export class DroneCamera {
     const targetLon = pos.longitude + (offsetX + lateralX) / metersPerDegreeLon;
     const targetLat = pos.latitude + (offsetY + lateralY) / metersPerDegreeLat;
 
-    // Pitch'e göre yükseklik ayarı (dalış yapınca kamera daha yukarıda kalır)
     const pitchHeightBonus = Math.max(0, -this.physics.pitch * 0.3);
     const targetHeight = pos.height + this.followHeight + pitchHeightBonus;
 
@@ -89,7 +176,6 @@ export class DroneCamera {
       targetHeight
     );
 
-    // ── Yumuşak Geçiş (Lerp) ──
     if (!this.currentCamPosition) {
       this.currentCamPosition = targetCartesian.clone();
       this.currentCamHeading = this.physics.heading;
@@ -102,18 +188,15 @@ export class DroneCamera {
         this.currentCamPosition
       );
 
-      // Heading yumuşatma
       let headingDiff = this.physics.heading - this.currentCamHeading;
       if (headingDiff > 180) headingDiff -= 360;
       if (headingDiff < -180) headingDiff += 360;
       this.currentCamHeading += headingDiff * lerpFactor;
       this.currentCamHeading = ((this.currentCamHeading % 360) + 360) % 360;
 
-      // Roll yumuşatma (kameranın hafif eğilmesi)
       this.currentCamRoll += (this.physics.roll * this.rollInfluence - this.currentCamRoll) * lerpFactor;
     }
 
-    // Kamerayı İHA'nın heading yönüne, hafif aşağıya bakacak şekilde ayarla
     const lookDownAngle = -18 + Math.min(0, this.physics.pitch * 0.2);
 
     this.mainViewer.camera.setView({
@@ -128,12 +211,10 @@ export class DroneCamera {
 
   /**
    * Cockpit Kamerası
-   * İHA'nın gövdesinden ileri doğru bakar.
-   * Heading, Pitch, Roll ile birlikte döner.
    */
   updateCockpitCamera(dt, pos, droneCartesian) {
     const headingRad = Cesium.Math.toRadians(this.physics.heading);
-    const pitchRad = Cesium.Math.toRadians(this.physics.pitch - 5); // Hafif aşağı bak
+    const pitchRad = Cesium.Math.toRadians(this.physics.pitch - 5);
     const rollRad = Cesium.Math.toRadians(this.physics.roll);
 
     this.mainViewer.camera.setView({
@@ -142,6 +223,76 @@ export class DroneCamera {
         heading: headingRad,
         pitch: pitchRad,
         roll: rollRad,
+      },
+    });
+  }
+
+  /**
+   * 360° Orbit Kamerası
+   * Mouse ile drone etrafında serbest dönüş.
+   *
+   * Kamera, drone'un konumunu merkez alır ve
+   * küresel koordinatlarda (yaw, pitch, distance) hareket eder.
+   * Drone heading'ine göre ofsetlenir → İHA dönünce kamera da
+   * bakış açısını korur.
+   */
+  updateOrbitCamera(dt, pos, droneCartesian) {
+    // Orbit açıları (drone heading'ine göre ofsetli)
+    const totalYaw = this.physics.heading + this.orbitYaw;
+    const yawRad = Cesium.Math.toRadians(totalYaw);
+    const pitchRad = Cesium.Math.toRadians(this.orbitPitch);
+
+    // Küresel koordinattan kartezyen ofset hesapla
+    const cosPitch = Math.cos(pitchRad);
+    const offsetX = this.orbitDistance * cosPitch * Math.sin(yawRad);
+    const offsetY = this.orbitDistance * cosPitch * Math.cos(yawRad);
+    const offsetZ = this.orbitDistance * Math.sin(-pitchRad);
+
+    const metersPerDegreeLon = 111320 * Math.cos(Cesium.Math.toRadians(pos.latitude));
+    const metersPerDegreeLat = 111320;
+
+    const camLon = pos.longitude + offsetX / metersPerDegreeLon;
+    const camLat = pos.latitude + offsetY / metersPerDegreeLat;
+    const camHeight = Math.max(5, pos.height + offsetZ);
+
+    const targetCartesian = Cesium.Cartesian3.fromDegrees(camLon, camLat, camHeight);
+
+    // Yumuşak geçiş
+    if (!this.currentOrbitPosition) {
+      this.currentOrbitPosition = targetCartesian.clone();
+    } else {
+      const lerpFactor = Math.min(1, this.orbitSmoothing * dt);
+      Cesium.Cartesian3.lerp(
+        this.currentOrbitPosition,
+        targetCartesian,
+        lerpFactor,
+        this.currentOrbitPosition
+      );
+    }
+
+    // Kamerayı drone'a bakacak yönde ayarla
+    // ENU (East-North-Up) frame'inde bakış vektörü hesapla
+    const camToTarget = new Cesium.Cartesian3();
+    Cesium.Cartesian3.subtract(droneCartesian, this.currentOrbitPosition, camToTarget);
+
+    const transform = Cesium.Transforms.eastNorthUpToFixedFrame(this.currentOrbitPosition);
+    const inverseTransform = Cesium.Matrix4.inverse(transform, new Cesium.Matrix4());
+    const localDir = Cesium.Matrix4.multiplyByPointAsVector(
+      inverseTransform, camToTarget, new Cesium.Cartesian3()
+    );
+    Cesium.Cartesian3.normalize(localDir, localDir);
+
+    const lookHeading = Math.atan2(localDir.x, localDir.y);
+    const lookPitch = Math.asin(
+      Cesium.Math.clamp(localDir.z / Cesium.Cartesian3.magnitude(localDir), -1, 1)
+    );
+
+    this.mainViewer.camera.setView({
+      destination: this.currentOrbitPosition,
+      orientation: {
+        heading: lookHeading,
+        pitch: lookPitch,
+        roll: 0,
       },
     });
   }

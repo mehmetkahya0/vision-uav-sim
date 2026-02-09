@@ -306,29 +306,164 @@ html, body {
   text-align: center;
 }
 
-/* ── Minimap ── */
+/* ── Minimap (Real World Map) ── */
 #minimapContainer {
   position: absolute;
-  top: 20px;
-  right: 20px;
-  width: 180px;
-  height: 140px;
-  z-index: 50;
-  border: 1px solid rgba(0, 212, 255, 0.3);
+  z-index: 55;
+  border: 1px solid rgba(0, 212, 255, 0.4);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.6), 0 0 8px rgba(0, 212, 255, 0.15);
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-#minimapCanvas {
+#minimapContainer.minimap-small {
+  top: 20px;
+  right: 20px;
+  width: 200px;
+  height: 150px;
+}
+
+#minimapContainer.minimap-expanded {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 70vw;
+  height: 70vh;
+  border-radius: 12px;
+  border-color: rgba(0, 212, 255, 0.6);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), 0 0 20px rgba(0, 212, 255, 0.2);
+  cursor: default;
+  z-index: 300;
+}
+
+#minimapViewer {
   width: 100%;
   height: 100%;
-  display: block;
 }
 
-#minimapContainer .cesium-viewer-bottom,
-#minimapContainer .cesium-widget-credits {
+#minimapViewer .cesium-viewer-toolbar,
+#minimapViewer .cesium-viewer-bottom,
+#minimapViewer .cesium-widget-credits,
+#minimapViewer .cesium-viewer-infoBoxContainer,
+#minimapViewer .cesium-viewer-selectionIndicatorContainer,
+#minimapViewer .cesium-viewer-animationContainer,
+#minimapViewer .cesium-viewer-timelineContainer,
+#minimapViewer .cesium-viewer-fullscreenContainer {
   display: none !important;
+}
+
+/* Minimap Overlay */
+#minimapOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.6) 0%, transparent 100%);
+  z-index: 10;
+  pointer-events: none;
+}
+
+#minimapLabel {
+  color: rgba(0, 212, 255, 0.7);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  font-family: 'Consolas', monospace;
+}
+
+#minimapClose {
+  background: rgba(0, 212, 255, 0.15);
+  border: 1px solid rgba(0, 212, 255, 0.4);
+  color: #00d4ff;
+  font-size: 14px;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  cursor: pointer;
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+#minimapClose:hover {
+  background: rgba(0, 212, 255, 0.3);
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.4);
+}
+
+#minimapClose.hidden {
+  display: none;
+}
+
+/* Minimap Crosshair (drone position) */
+#minimapCrosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #ff3344;
+  font-size: 18px;
+  font-weight: 900;
+  text-shadow: 0 0 6px rgba(255, 50, 60, 0.6);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.minimap-expanded #minimapCrosshair {
+  font-size: 28px;
+}
+
+/* Minimap Info (bottom coordinates) */
+#minimapInfo {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 3px 8px;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.6) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 10;
+}
+
+#minimapCoords {
+  color: rgba(0, 212, 255, 0.6);
+  font-size: 9px;
+  font-family: 'Consolas', monospace;
+}
+
+.minimap-expanded #minimapCoords {
+  font-size: 12px;
+}
+
+.minimap-expanded #minimapLabel {
+  font-size: 12px;
+}
+
+/* Expanded backdrop blur */
+#minimapBackdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 299;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+#minimapBackdrop.visible {
+  opacity: 1;
+  pointer-events: all;
 }
 
 /* ── Genel stiller ── */
@@ -365,11 +500,16 @@ html, body {
     font-size: 10px;
   }
 
-  #minimapContainer {
-    width: 120px;
-    height: 100px;
+  #minimapContainer.minimap-small {
+    width: 140px;
+    height: 110px;
     top: 10px;
     right: 10px;
+  }
+
+  #minimapContainer.minimap-expanded {
+    width: 90vw;
+    height: 60vh;
   }
 
   #throttleBarContainer {
