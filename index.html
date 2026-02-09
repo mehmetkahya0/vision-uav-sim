@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Istanbul Drone Simulator</title>
   <link rel="stylesheet" href="/src/styles.css" />
+  <!-- TensorFlow.js and COCO-SSD for object detection -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 </head>
 <body>
   <!-- Ana Cesium sahne -->
@@ -15,10 +18,29 @@
     <div id="droneCameraView"></div>
     <div id="cameraOverlay">
       <span id="cameraLabel">DRONE CAM</span>
+      <span id="aiStatusBadge" class="ai-badge ai-off">AI OFF</span>
       <button id="toggleCameraSize" title="Tam Ekran / Küçült">⛶</button>
     </div>
     <div id="cameraHUD">
       <div id="crosshair">+</div>
+    </div>
+  </div>
+
+  <!-- ═══ AI DETECTION PANELİ ═══ -->
+  <div id="detectionPanel" class="hidden">
+    <div class="det-header">
+      <span class="det-icon">◉</span>
+      <span id="detectionStatus">AI KAPALI</span>
+    </div>
+    <div class="det-body">
+      <div class="det-row">
+        <span>HEDEF: <strong id="detectionCount">0</strong></span>
+        <span id="detConfidence" class="det-conf">CONF: 25%</span>
+      </div>
+    </div>
+    <div class="det-footer">
+      <span class="det-key"><kbd>B</kbd> Aç/Kapat</span>
+      <span class="det-key"><kbd>N/M</kbd> Hassasiyet</span>
     </div>
   </div>
 
@@ -98,6 +120,8 @@
         <tr><td><kbd>V</kbd></td><td>Kamera Modu (Takip/Cockpit/Orbit)</td></tr>
         <tr><td><kbd>Mouse</kbd></td><td>Orbit: Sürükle=Dön, Scroll=Zoom</td></tr>
         <tr><td><kbd>C</kbd></td><td>Drone Cam (PiP/Tam Ekran)</td></tr>
+        <tr><td><kbd>B</kbd></td><td>AI Detection Aç/Kapat</td></tr>
+        <tr><td><kbd>N / M</kbd></td><td>Hassasiyet Azalt/Artır</td></tr>
       </table>
       <div class="help-physics-note">
         <small>Fizik: Lift=½ρv²SC<sub>L</sub> | Stall@16°AoA | Koordineli Dönüş</small>

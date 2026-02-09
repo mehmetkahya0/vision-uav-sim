@@ -632,3 +632,150 @@ html, body {
   font-family: 'Consolas', monospace;
   line-height: 1.4;
 }
+
+/* ═══════════════════════════════════════
+   AI DETECTION PANELİ
+   ═══════════════════════════════════════ */
+
+#detectionPanel {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 50;
+  background: rgba(0, 10, 20, 0.88);
+  border: 1px solid rgba(0, 255, 136, 0.35);
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 180px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5),
+              0 0 30px rgba(0, 255, 136, 0.05),
+              inset 0 0 30px rgba(0, 255, 136, 0.02);
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+#detectionPanel.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+}
+
+.det-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.det-icon {
+  color: #00ff88;
+  font-size: 14px;
+  animation: pulse-glow 2s infinite;
+}
+
+#detectionStatus {
+  color: #00ff88;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.4);
+}
+
+.det-body {
+  margin-bottom: 8px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  color: #00d4ff;
+  letter-spacing: 1px;
+}
+
+.det-body strong {
+  color: #00ff88;
+  font-size: 16px;
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.3);
+}
+
+.det-footer {
+  display: flex;
+  gap: 12px;
+  border-top: 1px solid rgba(0, 255, 136, 0.15);
+  padding-top: 6px;
+}
+
+.det-key {
+  font-size: 9px;
+  color: rgba(0, 212, 255, 0.5);
+  font-family: 'Consolas', monospace;
+}
+
+.det-key kbd {
+  background: rgba(0, 255, 136, 0.12);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  color: #00ff88;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  margin-right: 3px;
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+    text-shadow: 0 0 6px rgba(0, 255, 136, 0.6);
+  }
+  50% {
+    opacity: 0.7;
+    text-shadow: 0 0 12px rgba(0, 255, 136, 0.3);
+  }
+}
+
+/* ═══ AI Badge (Drone Cam Overlay) ═══ */
+.ai-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 1.5px;
+  z-index: 200;
+  pointer-events: none;
+  transition: all 0.3s ease;
+}
+
+.ai-on {
+  background: rgba(0, 255, 136, 0.18);
+  border: 1px solid rgba(0, 255, 136, 0.6);
+  color: #00ff88;
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.7);
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
+.ai-off {
+  background: rgba(100, 100, 100, 0.25);
+  border: 1px solid rgba(100, 100, 100, 0.4);
+  color: #666;
+  text-shadow: none;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(0, 255, 136, 0.3); }
+  50% { box-shadow: 0 0 14px rgba(0, 255, 136, 0.6); }
+}
+
+/* Detection panel rows */
+.det-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.det-conf {
+  font-size: 10px;
+  color: #00d4ff;
+  font-family: 'Consolas', monospace;
+  letter-spacing: 0.5px;
+}

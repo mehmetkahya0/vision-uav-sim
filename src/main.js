@@ -17,6 +17,7 @@ import { DroneControls } from './droneControls.js';
 import { DroneCamera } from './droneCamera.js';
 import { HUD } from './hud.js';
 import { DroneModel } from './droneModel.js';
+import { ObjectDetector } from './objectDetection.js';
 
 // ── Cesium Ion Token ──
 Cesium.Ion.defaultAccessToken =
@@ -116,8 +117,11 @@ class DroneSimulator {
     this.droneModel = new DroneModel(this.viewer);
     await this.droneModel.init();
 
+    // AI Object Detection (TF.js + COCO-SSD)
+    this.detector = new ObjectDetector();
+
     // Klavye Kontrolleri
-    this.controls = new DroneControls(this.physics);
+    this.controls = new DroneControls(this.physics, this.detector);
 
     // Kamera Sistemi
     this.droneCamera = new DroneCamera(this.viewer, this.physics);
@@ -141,6 +145,7 @@ class DroneSimulator {
     console.log('✈️ Istanbul Drone Simulator başlatıldı!');
     console.log('📍 Konum: Galata Kulesi civarı, İstanbul');
     console.log('🎮 Kontroller: W/S=Pitch, A/D=Roll, Q/E=Yaw, Shift/Ctrl=Throttle');
+    console.log('🤖 AI Detection: B tuşu ile aç/kapat');
   }
 
   /**
@@ -435,6 +440,20 @@ class DroneSimulator {
     this.frameCount++;
     if (this.frameCount % 3 === 0) {
       this.captureDroneCam(cesiumTime);
+
+      // AI Detection: FPV frame'den tespit çalıştır (her 6 frame'de)
+      if (this.detector.isEnabled && this.frameCount % 6 === 0) {
+        this.detector.detect(this.droneCamCanvas);
+      }
+
+      // AI Detection: Bounding box + overlay çiz (her drone cam frame'inde)
+      if (this.detector.isEnabled) {
+        this.detector.drawDetections(
+          this.droneCamCtx,
+          this.droneCamCanvas.width,
+          this.droneCamCanvas.height
+        );
+      }
     }
 
     // ── RENDER PASS 2: Ana Takip Kamerası ──

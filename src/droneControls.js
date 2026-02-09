@@ -24,8 +24,9 @@
  *   ?         → Yardım paneli
  */
 export class DroneControls {
-  constructor(physics) {
+  constructor(physics, detector) {
     this.physics = physics;
+    this.detector = detector;
     this.keys = {};
     this.cameraMode = 'follow'; // 'follow' | 'cockpit'
     this.setupListeners();
@@ -57,6 +58,25 @@ export class DroneControls {
       // Kamera boyut değişikliği
       if (e.code === 'KeyC') {
         this.toggleCameraSize();
+      }
+
+      // AI Detection aç/kapat
+      if (e.code === 'KeyB') {
+        if (this.detector) this.detector.toggle();
+      }
+
+      // Confidence threshold azalt
+      if (e.code === 'KeyN') {
+        if (this.detector) {
+          this.detector.setConfidence(this.detector.confThreshold - 0.05);
+        }
+      }
+
+      // Confidence threshold artır
+      if (e.code === 'KeyM') {
+        if (this.detector) {
+          this.detector.setConfidence(this.detector.confThreshold + 0.05);
+        }
       }
 
       // Yardım paneli
