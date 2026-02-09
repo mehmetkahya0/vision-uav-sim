@@ -761,6 +761,19 @@ html, body {
   text-shadow: none;
 }
 
+.ai-frozen {
+  background: rgba(255, 153, 0, 0.2);
+  border: 1px solid rgba(255, 153, 0, 0.7);
+  color: #ff9900;
+  text-shadow: 0 0 8px rgba(255, 153, 0, 0.6);
+  animation: badge-frozen-pulse 1s ease-in-out infinite;
+}
+
+@keyframes badge-frozen-pulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(255, 153, 0, 0.3); }
+  50% { box-shadow: 0 0 14px rgba(255, 153, 0, 0.7); }
+}
+
 @keyframes badge-pulse {
   0%, 100% { box-shadow: 0 0 6px rgba(0, 255, 136, 0.3); }
   50% { box-shadow: 0 0 14px rgba(0, 255, 136, 0.6); }

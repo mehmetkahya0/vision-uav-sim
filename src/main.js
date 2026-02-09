@@ -438,8 +438,28 @@ class DroneSimulator {
 
     // ── RENDER PASS 1: Drone FPV Kamerası (her 3 frame'de) ──
     this.frameCount++;
-    if (this.frameCount % 3 === 0) {
+
+    // Freeze aktifse frozen frame çiz, canlı render atla
+    if (this.detector.isFrozen) {
+      this.detector.drawFrozenFrame(
+        this.droneCamCtx,
+        this.droneCamCanvas.width,
+        this.droneCamCanvas.height
+      );
+      // Zoom göstergesini frozen üzerine de çiz
+      this._drawZoomIndicator();
+    } else if (this.frameCount % 3 === 0) {
       this.captureDroneCam(cesiumTime);
+
+      // Zoom uygula (canlı görüntüye)
+      if (this.detector.zoomLevel > 1.01) {
+        this.detector.applyZoom(
+          this.droneCamCanvas,
+          this.droneCamCtx,
+          this.droneCamCanvas.width,
+          this.droneCamCanvas.height
+        );
+      }
 
       // AI Detection: FPV frame'den tespit çalıştır (her 6 frame'de)
       if (this.detector.isEnabled && this.frameCount % 6 === 0) {
@@ -454,6 +474,9 @@ class DroneSimulator {
           this.droneCamCanvas.height
         );
       }
+
+      // Zoom göstergesini çiz
+      this._drawZoomIndicator();
     }
 
     // ── RENDER PASS 2: Ana Takip Kamerası ──
@@ -462,6 +485,33 @@ class DroneSimulator {
     this.viewer.scene.render(cesiumTime);
 
     requestAnimationFrame(() => this.animate());
+  }
+
+  /**
+   * Zoom göstergesini drone cam üzerine çiz
+   */
+  _drawZoomIndicator() {
+    const zoom = this.detector._currentZoom || 1.0;
+    if (zoom <= 1.01) return;
+
+    const ctx = this.droneCamCtx;
+    const w = this.droneCamCanvas.width;
+
+    // Zoom badge (sağ üst)
+    const text = `🔍 ${zoom.toFixed(1)}x`;
+    ctx.font = 'bold 12px Consolas, monospace';
+    const tw = ctx.measureText(text).width + 16;
+    const tx = w - tw - 10;
+    const ty = 8;
+
+    ctx.fillStyle = 'rgba(0, 20, 40, 0.8)';
+    ctx.fillRect(tx, ty, tw, 22);
+    ctx.strokeStyle = 'rgba(0, 212, 255, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(tx, ty, tw, 22);
+
+    ctx.fillStyle = '#00d4ff';
+    ctx.fillText(text, tx + 8, ty + 16);
   }
 
   updateMinimap() {

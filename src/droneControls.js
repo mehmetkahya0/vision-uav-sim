@@ -79,6 +79,31 @@ export class DroneControls {
         }
       }
 
+      // Zoom In (+/= tuşu)
+      if (e.code === 'Equal' || e.code === 'NumpadAdd') {
+        if (this.detector) this.detector.zoomIn();
+        e.preventDefault();
+      }
+
+      // Zoom Out (- tuşu)
+      if (e.code === 'Minus' || e.code === 'NumpadSubtract') {
+        if (this.detector) this.detector.zoomOut();
+        e.preventDefault();
+      }
+
+      // Zoom Reset (0 tuşu)
+      if (e.code === 'Digit0' || e.code === 'Numpad0') {
+        if (this.detector) this.detector.resetZoom();
+      }
+
+      // Freeze (G tuşu) - 5 saniyelik görüntü dondurma
+      if (e.code === 'KeyG') {
+        if (this.detector) {
+          const canvas = document.getElementById('droneCamCanvas');
+          this.detector.toggleFreeze(canvas);
+        }
+      }
+
       // Yardım paneli
       if (e.code === 'Slash' && e.shiftKey) {
         this.toggleHelp();
@@ -87,7 +112,8 @@ export class DroneControls {
       // Tarayıcı varsayılanlarını engelle (kaydırma, zoom vs.)
       if ([
         'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-        'ControlLeft', 'ShiftLeft', 'ShiftRight'
+        'ControlLeft', 'ShiftLeft', 'ShiftRight', 'Equal', 'Minus',
+        'NumpadAdd', 'NumpadSubtract'
       ].includes(e.code)) {
         e.preventDefault();
       }
@@ -112,6 +138,20 @@ export class DroneControls {
     const helpBtn = document.getElementById('toggleHelp');
     if (helpBtn) {
       helpBtn.addEventListener('click', () => this.toggleHelp());
+    }
+
+    // Drone kamera üzerinde scroll ile zoom
+    const droneCamContainer = document.getElementById('droneCameraContainer');
+    if (droneCamContainer) {
+      droneCamContainer.addEventListener('wheel', (e) => {
+        if (!this.detector) return;
+        e.preventDefault();
+        if (e.deltaY < 0) {
+          this.detector.zoomIn();
+        } else {
+          this.detector.zoomOut();
+        }
+      }, { passive: false });
     }
 
     // Sürekli girdi döngüsünü başlat

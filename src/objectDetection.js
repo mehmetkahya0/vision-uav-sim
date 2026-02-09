@@ -125,12 +125,29 @@ export class ObjectDetector {
 
     // ── Tespit Sonuçları (frame'ler arası korunur) ──
     this.detections = [];
+    this._smoothedDetections = []; // Smooth interpolation
     this.lastInferenceTime = 0;
     this.inferenceMs = 0;
     this.detFps = 0;
     this.detFrameCount = 0;
     this.fpsTimer = performance.now();
     this.totalDetections = 0;
+    this._trackingId = 0;
+
+    // ── Zoom Sistemi ──
+    this.zoomLevel = 1.0;
+    this.minZoom = 1.0;
+    this.maxZoom = 8.0;
+    this.zoomStep = 0.5;
+    this._targetZoom = 1.0;
+    this._currentZoom = 1.0; // Smooth zoom
+
+    // ── Freeze (Görüntü Dondurma) Sistemi ──
+    this.isFrozen = false;
+    this.freezeStartTime = 0;
+    this.freezeDuration = 5000; // 5 saniye
+    this.frozenCanvas = null;
+    this.frozenDetections = [];
 
     // ── UI Elemanları ──
     this.statusEl = document.getElementById('detectionStatus');
@@ -206,10 +223,168 @@ export class ObjectDetector {
       this._showPanel(true);
     } else {
       this.detections = [];
+      this._smoothedDetections = [];
       this._updateStatus('AI KAPALI', '#666');
       this._updateBadge(false);
       this._showPanel(false);
+      // Freeze varsa iptal et
+      if (this.isFrozen) this._unfreeze();
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ZOOM SİSTEMİ
+  // ═══════════════════════════════════════════════════════════════
+
+  zoomIn() {
+    this._targetZoom = Math.min(this.maxZoom, this._targetZoom + this.zoomStep);
+    this.zoomLevel = this._targetZoom;
+    console.log(`🔍 Zoom: ${this.zoomLevel.toFixed(1)}x`);
+  }
+
+  zoomOut() {
+    this._targetZoom = Math.max(this.minZoom, this._targetZoom - this.zoomStep);
+    this.zoomLevel = this._targetZoom;
+    console.log(`🔍 Zoom: ${this.zoomLevel.toFixed(1)}x`);
+  }
+
+  resetZoom() {
+    this._targetZoom = 1.0;
+    this.zoomLevel = 1.0;
+    this._currentZoom = 1.0;
+    console.log('🔍 Zoom sıfırlandı');
+  }
+
+  /**
+   * Zoom uygulanmış canvas çizimi.
+   * sourceCanvas'tan ortalanmış crop alır ve hedef canvas'a çizer.
+   */
+  applyZoom(sourceCanvas, ctx, canvasWidth, canvasHeight) {
+    // Smooth zoom interpolation
+    this._currentZoom += (this._targetZoom - this._currentZoom) * 0.15;
+    if (Math.abs(this._currentZoom - this._targetZoom) < 0.01) {
+      this._currentZoom = this._targetZoom;
+    }
+
+    const zoom = this._currentZoom;
+    if (zoom <= 1.01) return false; // No zoom applied
+
+    const sw = sourceCanvas.width / zoom;
+    const sh = sourceCanvas.height / zoom;
+    const sx = (sourceCanvas.width - sw) / 2;
+    const sy = (sourceCanvas.height - sh) / 2;
+
+    // Geçici canvas'a mevcut içeriği kopyala
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvasWidth;
+    tempCanvas.height = canvasHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(sourceCanvas, 0, 0);
+
+    // Temizle ve zoom uygulanmış halini çiz
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(tempCanvas, sx, sy, sw, sh, 0, 0, canvasWidth, canvasHeight);
+
+    return true;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // FREEZE (GÖRÜNTÜ DONDURMA) SİSTEMİ
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Mevcut drone kamera frame'ini 5 saniye dondur.
+   * Detection sonuçları da korunur.
+   */
+  toggleFreeze(sourceCanvas) {
+    if (this.isFrozen) {
+      this._unfreeze();
+      return;
+    }
+    if (!sourceCanvas || sourceCanvas.width === 0) return;
+
+    this.isFrozen = true;
+    this.freezeStartTime = performance.now();
+
+    // Canvas'ı kopyala
+    this.frozenCanvas = document.createElement('canvas');
+    this.frozenCanvas.width = sourceCanvas.width;
+    this.frozenCanvas.height = sourceCanvas.height;
+    const fCtx = this.frozenCanvas.getContext('2d');
+    fCtx.drawImage(sourceCanvas, 0, 0);
+
+    // Mevcut tespitleri sakla
+    this.frozenDetections = [...this.detections];
+
+    this._updateStatus('FROZEN ⏸', '#ff9900');
+    this._updateBadge(true, true); // frozen mode
+    console.log('❄️ Görüntü donduruldu (5s)');
+  }
+
+  _unfreeze() {
+    this.isFrozen = false;
+    this.frozenCanvas = null;
+    this.frozenDetections = [];
+    if (this.isEnabled) {
+      this._updateStatus('AI AKTİF', '#00ff88');
+      this._updateBadge(true, false);
+    }
+    console.log('▶️ Görüntü devam ediyor');
+  }
+
+  /**
+   * Frozen frame'i canvas'a çiz. Süre biterse otomatik unfreeze.
+   * @returns {boolean} true = hâlâ frozen
+   */
+  drawFrozenFrame(ctx, canvasWidth, canvasHeight) {
+    if (!this.isFrozen || !this.frozenCanvas) return false;
+
+    const elapsed = performance.now() - this.freezeStartTime;
+    if (elapsed >= this.freezeDuration) {
+      this._unfreeze();
+      return false;
+    }
+
+    // Frozen frame'i çiz
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    ctx.drawImage(this.frozenCanvas, 0, 0, canvasWidth, canvasHeight);
+
+    // Detections'ı frozen frame üzerinde çiz
+    const origDetections = this.detections;
+    this.detections = this.frozenDetections;
+    this.drawDetections(ctx, canvasWidth, canvasHeight);
+    this.detections = origDetections;
+
+    // ── Freeze Overlay UI ──
+    const remaining = Math.ceil((this.freezeDuration - elapsed) / 1000);
+    const progress = elapsed / this.freezeDuration;
+
+    // Üst bar - FROZEN yazısı
+    ctx.fillStyle = 'rgba(255, 153, 0, 0.15)';
+    ctx.fillRect(0, 0, canvasWidth, 36);
+
+    ctx.font = 'bold 13px Consolas, monospace';
+    ctx.fillStyle = '#ff9900';
+    ctx.textAlign = 'center';
+    ctx.fillText(`❄ FROZEN — ${remaining}s`, canvasWidth / 2, 23);
+    ctx.textAlign = 'left';
+
+    // Progress bar (alt)
+    const barH = 4;
+    const barY = canvasHeight - barH;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, barY, canvasWidth, barH);
+    ctx.fillStyle = '#ff9900';
+    ctx.fillRect(0, barY, canvasWidth * (1 - progress), barH);
+
+    // Kenarlık parlaması
+    ctx.strokeStyle = 'rgba(255, 153, 0, 0.5)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(1.5, 1.5, canvasWidth - 3, canvasHeight - 3);
+
+    return true;
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -232,10 +407,12 @@ export class ObjectDetector {
         this.confThreshold
       );
 
-      // Sonuçları iç formata dönüştür
-      this.detections = predictions.map((pred) => {
+      // Sonuçları iç formata dönüştür + tracking
+      const newDetections = predictions.map((pred) => {
         const [x, y, w, h] = pred.bbox;
         const color = getClassColor(pred.class);
+        // Basit tracking: önceki frame'de aynı sınıfta en yakın kutuyu bul
+        const trackId = this._matchTrack(x, y, x + w, y + h, pred.class);
         return {
           x1: x,
           y1: y,
@@ -245,8 +422,12 @@ export class ObjectDetector {
           className: pred.class,
           classNameTr: CLASS_NAME_TR[pred.class] || pred.class,
           color: color,
+          trackId: trackId,
         };
       });
+
+      // Smooth interpolation (bounding box titreşimi azaltma)
+      this.detections = this._interpolateDetections(newDetections);
 
       // İstatistik
       this.inferenceMs = performance.now() - t0;
@@ -264,6 +445,58 @@ export class ObjectDetector {
     }
 
     this.isRunning = false;
+  }
+
+  /**
+   * Basit IoU tabanlı tracking: önceki frame'deki en yakın kutuyu eşleştir
+   */
+  _matchTrack(x1, y1, x2, y2, className) {
+    let bestId = ++this._trackingId;
+    let bestIoU = 0.3; // min IoU eşiği
+
+    for (const prev of this._smoothedDetections) {
+      if (prev.className !== className) continue;
+      const iou = this._calcIoU(x1, y1, x2, y2, prev.x1, prev.y1, prev.x2, prev.y2);
+      if (iou > bestIoU) {
+        bestIoU = iou;
+        bestId = prev.trackId;
+      }
+    }
+    return bestId;
+  }
+
+  _calcIoU(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2) {
+    const ix1 = Math.max(ax1, bx1);
+    const iy1 = Math.max(ay1, by1);
+    const ix2 = Math.min(ax2, bx2);
+    const iy2 = Math.min(ay2, by2);
+    if (ix2 <= ix1 || iy2 <= iy1) return 0;
+    const inter = (ix2 - ix1) * (iy2 - iy1);
+    const areaA = (ax2 - ax1) * (ay2 - ay1);
+    const areaB = (bx2 - bx1) * (by2 - by1);
+    return inter / (areaA + areaB - inter);
+  }
+
+  /**
+   * Bounding box smooth interpolation — titreşimi azaltır
+   */
+  _interpolateDetections(newDets) {
+    const alpha = 0.4; // 0=tamamen eski, 1=tamamen yeni
+    return newDets.map((nd) => {
+      const prev = this._smoothedDetections.find(
+        (sd) => sd.trackId === nd.trackId
+      );
+      if (prev) {
+        return {
+          ...nd,
+          x1: prev.x1 + (nd.x1 - prev.x1) * alpha,
+          y1: prev.y1 + (nd.y1 - prev.y1) * alpha,
+          x2: prev.x2 + (nd.x2 - prev.x2) * alpha,
+          y2: prev.y2 + (nd.y2 - prev.y2) * alpha,
+        };
+      }
+      return nd;
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -294,6 +527,9 @@ export class ObjectDetector {
     for (const det of this.detections) {
       this._drawSingleDetection(ctx, det);
     }
+
+    // Smooth detections güncelle (sonraki frame interpolation için)
+    this._smoothedDetections = [...this.detections];
 
     // İstatistik paneli (canvas üzerinde)
     this._drawStatsOverlay(ctx, canvasWidth, canvasHeight);
@@ -349,8 +585,8 @@ export class ObjectDetector {
     ctx.lineTo(x2, y2 - cornerLen);
     ctx.stroke();
 
-    // ── Label (sınıf + skor) ──
-    const label = `${classNameTr} ${(score * 100).toFixed(0)}%`;
+    // ── Label (sınıf + skor + tracking ID) ──
+    const label = `${classNameTr} ${(score * 100).toFixed(0)}% #${det.trackId || 0}`;
     ctx.font = 'bold 11px Consolas, monospace';
     const metrics = ctx.measureText(label);
     const labelW = metrics.width + 12;
@@ -457,15 +693,19 @@ export class ObjectDetector {
   /**
    * Drone cam üzerindeki AI badge güncelle
    */
-  _updateBadge(active) {
+  _updateBadge(active, frozen = false) {
     if (this.aiBadgeEl) {
-      if (active) {
+      if (frozen) {
+        this.aiBadgeEl.textContent = '❄ FROZEN';
+        this.aiBadgeEl.classList.remove('ai-off', 'ai-on');
+        this.aiBadgeEl.classList.add('ai-frozen');
+      } else if (active) {
         this.aiBadgeEl.textContent = 'AI ON';
-        this.aiBadgeEl.classList.remove('ai-off');
+        this.aiBadgeEl.classList.remove('ai-off', 'ai-frozen');
         this.aiBadgeEl.classList.add('ai-on');
       } else {
         this.aiBadgeEl.textContent = 'AI OFF';
-        this.aiBadgeEl.classList.remove('ai-on');
+        this.aiBadgeEl.classList.remove('ai-on', 'ai-frozen');
         this.aiBadgeEl.classList.add('ai-off');
       }
     }
