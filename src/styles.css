@@ -1397,3 +1397,340 @@ html, body {
   background: rgba(0, 30, 50, 0.95);
   color: #00ff88;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   AI VISION PANEL - Çoklu AI Model Seçim Paneli
+   ═══════════════════════════════════════════════════════════════════ */
+
+.ai-vision-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 420px;
+  background: linear-gradient(145deg, rgba(10, 22, 40, 0.97), rgba(5, 15, 30, 0.98));
+  border: 2px solid rgba(0, 212, 255, 0.5);
+  border-radius: 16px;
+  box-shadow: 
+    0 0 40px rgba(0, 212, 255, 0.3),
+    0 0 80px rgba(0, 150, 255, 0.15),
+    inset 0 0 60px rgba(0, 100, 150, 0.1);
+  z-index: 1000;
+  overflow: hidden;
+  backdrop-filter: blur(20px);
+  animation: panelSlideIn 0.3s ease-out;
+}
+
+.ai-vision-panel.hidden {
+  display: none;
+}
+
+@keyframes panelSlideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.ai-vision-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: linear-gradient(90deg, rgba(0, 212, 255, 0.2), transparent);
+  border-bottom: 1px solid rgba(0, 212, 255, 0.3);
+}
+
+.ai-vision-icon {
+  font-size: 24px;
+  animation: iconPulse 2s infinite;
+}
+
+@keyframes iconPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+.ai-vision-title {
+  font-family: 'Consolas', monospace;
+  font-size: 16px;
+  font-weight: bold;
+  color: #00d4ff;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+  flex: 1;
+}
+
+.ai-vision-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 50, 60, 0.2);
+  border: 1px solid rgba(255, 50, 60, 0.4);
+  border-radius: 6px;
+  color: #ff6b6b;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ai-vision-close:hover {
+  background: rgba(255, 50, 60, 0.4);
+  box-shadow: 0 0 15px rgba(255, 50, 60, 0.4);
+  transform: scale(1.1);
+}
+
+.ai-vision-body {
+  padding: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.ai-vision-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ai-vision-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+}
+
+.ai-vision-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 212, 255, 0.5);
+  border-radius: 3px;
+}
+
+/* AI Model Item */
+.ai-model-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  background: rgba(0, 50, 80, 0.3);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.ai-model-item:hover {
+  background: rgba(0, 70, 100, 0.4);
+  border-color: rgba(0, 212, 255, 0.5);
+  transform: translateX(4px);
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
+}
+
+.ai-model-item:last-child {
+  margin-bottom: 0;
+}
+
+/* Custom Checkbox */
+.ai-model-checkbox {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.ai-model-checkbox input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.ai-checkmark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 24px;
+  height: 24px;
+  background: rgba(0, 30, 50, 0.8);
+  border: 2px solid rgba(0, 212, 255, 0.4);
+  border-radius: 6px;
+  transition: all 0.25s ease;
+}
+
+.ai-model-checkbox input:checked + .ai-checkmark {
+  background: linear-gradient(135deg, #00d4ff, #00ff88);
+  border-color: #00ff88;
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
+}
+
+.ai-checkmark::after {
+  content: '';
+  position: absolute;
+  display: none;
+  left: 7px;
+  top: 3px;
+  width: 6px;
+  height: 12px;
+  border: solid #000;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.ai-model-checkbox input:checked + .ai-checkmark::after {
+  display: block;
+}
+
+/* Model Info */
+.ai-model-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-model-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Consolas', monospace;
+  font-size: 14px;
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.ai-model-icon {
+  font-size: 18px;
+}
+
+.ai-model-key {
+  background: rgba(0, 212, 255, 0.2);
+  border: 1px solid rgba(0, 212, 255, 0.4);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  color: #00d4ff;
+  margin-left: auto;
+}
+
+.ai-model-desc {
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Model Status */
+.ai-model-status {
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(100, 100, 100, 0.5);
+  border: 2px solid rgba(100, 100, 100, 0.8);
+  transition: all 0.3s ease;
+}
+
+.ai-status-dot.loading {
+  background: #ffaa00;
+  border-color: #ffcc00;
+  animation: statusPulse 1s infinite;
+}
+
+.ai-status-dot.active {
+  background: #00ff88;
+  border-color: #00ffaa;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.6);
+}
+
+.ai-status-dot.error {
+  background: #ff3344;
+  border-color: #ff5566;
+  box-shadow: 0 0 10px rgba(255, 50, 60, 0.6);
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.9); }
+}
+
+/* Footer */
+.ai-vision-footer {
+  padding: 12px 20px;
+  background: rgba(0, 30, 50, 0.5);
+  border-top: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+.ai-stats-row {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 8px;
+}
+
+.ai-stats-row span:first-child {
+  color: #00ff88;
+}
+
+.ai-vision-hint {
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.ai-vision-hint kbd {
+  background: rgba(0, 212, 255, 0.2);
+  border: 1px solid rgba(0, 212, 255, 0.4);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-family: 'Consolas', monospace;
+  font-size: 10px;
+  color: #00d4ff;
+  margin: 0 4px;
+}
+
+/* AI Overlay güncelleme - Camera container'a AI badge ekle */
+.ai-active-badge {
+  position: absolute;
+  top: 30px;
+  right: 12px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  max-width: 200px;
+  z-index: 15;
+}
+
+.ai-active-badge .ai-tag {
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: 'Consolas', monospace;
+  font-size: 9px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  animation: tagPulse 2s infinite;
+}
+
+.ai-tag.tracking { border-color: #ff6b6b; color: #ff6b6b; }
+.ai-tag.depth { border-color: #4ecdc4; color: #4ecdc4; }
+.ai-tag.segment { border-color: #a855f7; color: #a855f7; }
+.ai-tag.pose { border-color: #f59e0b; color: #f59e0b; }
+.ai-tag.flow { border-color: #06b6d4; color: #06b6d4; }
+
+@keyframes tagPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}

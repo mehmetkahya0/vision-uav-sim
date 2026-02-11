@@ -144,36 +144,54 @@ export class WeatherSystem {
   updateLighting() {
     const viewer = this.viewer;
     const hour = this.gameTime.hour;
+    const minute = this.gameTime.minute;
     const dayOfYear = this.gameTime.dayOfYear;
+    
+    // ═══ KRİTİK: Cesium clock'unu gameTime ile senkronize et ═══
+    // Bu olmadan skyAtmosphere güneş pozisyonunu bilmiyor!
+    const year = 2024;
+    const month = Math.floor((dayOfYear - 1) / 30);  // 0-11 arası
+    const day = ((dayOfYear - 1) % 30) + 1;          // 1-30 arası
+    const gameDate = new Date(year, month, day, Math.floor(hour), Math.floor(minute), Math.floor(this.gameTime.second));
+    viewer.clock.currentTime = Cesium.JulianDate.fromDate(gameDate);
     
     // Gün döngüsü: 6am-6pm = gündüz, 6pm-6am = gece
     const sunIntensity = this.calculateSunIntensity(hour);
     
     // Cesium'un ambient light
     const ambientBrightness = 0.2 + (sunIntensity * 0.8);
-    viewer.scene.light.intensity = sunIntensity;
+    viewer.scene.light.intensity = Math.max(0.3, sunIntensity);  // Minimum 0.3 ışık
     
-    // Sky atmosfer rengi
+    // Sky atmosfer rengi - güneş pozisyonuna göre otomatik değişir
     if (hour >= 6 && hour < 18) {
       // Gündüz: normal mavi gökyüzü
       viewer.scene.skyAtmosphere.hueShift = 0;
       viewer.scene.skyAtmosphere.saturationShift = 0;
-      viewer.scene.skyAtmosphere.brightnessShift = 0;
-      viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a1628');
+      viewer.scene.skyAtmosphere.brightnessShift = 0.2;  // Daha parlak
+      viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#1a3a5c');
+      
+      // Gündüz: skyBox gizle (mavi atmosfer görünsün), güneş görünür
+      if (viewer.scene.skyBox) viewer.scene.skyBox.show = false;
+      viewer.scene.sun.show = true;
+      viewer.scene.moon.show = false;
     } else {
-      // Gece: zifiri karanlık gökyüzü
+      // Gece: karanlık gökyüzü, yıldızlar görünür
       viewer.scene.skyAtmosphere.hueShift = 0;
-      viewer.scene.skyAtmosphere.saturationShift = -0.8;
-      viewer.scene.skyAtmosphere.brightnessShift = -0.95;
-      // Globe'u çok karanlık yap
-      viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#010203');
+      viewer.scene.skyAtmosphere.saturationShift = -0.3;
+      viewer.scene.skyAtmosphere.brightnessShift = -0.5;
+      viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#050a14');
+      
+      // Gece: skyBox (yıldızlar) görünür, ay görünür
+      if (viewer.scene.skyBox) viewer.scene.skyBox.show = true;
+      viewer.scene.sun.show = false;
+      viewer.scene.moon.show = true;
     }
 
-    // Fog yoğunluğu: Gece çok daha yoğun (karanlık)
-    const fogAmount = this.weather.visibility < 5000 ? 0.0005 : 0.0002;
-    const nightFogMultiplier = sunIntensity < 0.1 ? 3.0 : 1.0;
-    viewer.scene.fog.density = fogAmount * (1 - sunIntensity * 0.5) * nightFogMultiplier;
-    viewer.scene.fog.minimumBrightness = sunIntensity < 0.1 ? 0.0 : 0.02;
+    // Fog yoğunluğu: Gün/gece durumuna göre
+    const fogAmount = this.weather.visibility < 5000 ? 0.0004 : 0.0001;
+    const nightFogMultiplier = sunIntensity < 0.1 ? 1.5 : 1.0;
+    viewer.scene.fog.density = fogAmount * nightFogMultiplier;
+    viewer.scene.fog.minimumBrightness = sunIntensity < 0.1 ? 0.01 : 0.03;
 
     // Globe aydınlanması - Gece'de aktif ama çok düşük
     viewer.scene.globe.enableLighting = true;

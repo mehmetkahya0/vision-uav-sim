@@ -159,8 +159,8 @@ export class DroneControls {
         }
       }
 
-      // Gece Görüş Modu (I tuşu) - Infrared/Night Vision
-      if (e.code === 'KeyI') {
+      // Gece Görüş Modu (Z tuşu) - Infrared/Night Vision
+      if (e.code === 'KeyZ') {
         if (window.sim && window.sim.toggleNightVision) {
           window.sim.toggleNightVision();
         }

@@ -19,6 +19,7 @@ import { HUD } from './hud.js';
 import { DroneModel } from './droneModel.js';
 import { ObjectDetector } from './objectDetection.js';
 import { WeatherSystem } from './weather.js';
+import { AIVisionManager } from './aiVisionManager.js';
 
 // ── Cesium Ion Token ──
 Cesium.Ion.defaultAccessToken =
@@ -212,6 +213,9 @@ class DroneSimulator {
         this.osmBuildings.loadSiblings = false;
         this.osmBuildings.immediatelyLoadDesiredLevelOfDetail = false;
         
+        // Outline'ları kapat (imagery draping uyarısını engelle)
+        this.osmBuildings.showOutline = false;
+        
         this.viewer.scene.primitives.add(this.osmBuildings);
         console.log('✅ OSM binaları YÜKLENDİ (optimize edilmiş tile loading)');
       } catch (e) {
@@ -221,15 +225,40 @@ class DroneSimulator {
 
     // ── Sahne Ayarları (AGRESIF PERFORMANS) ──
     const scene = this.viewer.scene;
-    scene.globe.enableLighting = false;    // Aydınlatma KAPALI (GPU tasarrufu)
+    scene.globe.enableLighting = true;     // Aydınlatma AÇIK (skyAtmosphere için gerekli!)
     
     // FOG: Daha yoğun sis = uzak tile'lar gizlenir = daha az yükleme
     scene.fog.enabled = true;
-    scene.fog.density = 0.0006;            // Daha kalın sis (uzak tile yüklemeyi mask'le)
-    scene.fog.minimumBrightness = 0.02;    // Sis karanlığı
+    scene.fog.density = 0.0003;            // Orta kalınlıkta sis
+    scene.fog.minimumBrightness = 0.03;    // Minimum parlaklık
     
+    // ═══ GÖKYÜZÜ SİSTEMİ ═══
     // Atmosfer efektleri AÇIK (gökyüzü için gerekli)
     scene.skyAtmosphere.show = true;
+    scene.skyAtmosphere.brightnessShift = 0.3;   // Daha parlak atmosfer
+    scene.skyAtmosphere.saturationShift = 0.1;   // Biraz daha doygun renkler
+    
+    // SkyBox (yıldızlı gökyüzü arka planı) - Gece için
+    scene.skyBox = new Cesium.SkyBox({
+      sources: {
+        positiveX: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_px.jpg'),
+        negativeX: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_mx.jpg'),
+        positiveY: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_py.jpg'),
+        negativeY: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_my.jpg'),
+        positiveZ: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_pz.jpg'),
+        negativeZ: Cesium.buildModuleUrl('Assets/Textures/SkyBox/tycho2t3_80_mz.jpg'),
+      }
+    });
+    scene.skyBox.show = false;  // Başlangıçta gizle (gündüz atmosfer görünsün)
+    
+    // Güneş görünümü - AÇIK
+    scene.sun.show = true;
+    
+    // Ay görünümü - AÇIK  
+    scene.moon.show = true;
+    
+    // Arka plan rengi (skyBox yüklenemezse görünür)
+    scene.backgroundColor = Cesium.Color.fromCssColorString('#87CEEB');  // Açık mavi
     
     // Depth test - terrain clipping için gerekli
     scene.globe.depthTestAgainstTerrain = true;
@@ -272,6 +301,9 @@ class DroneSimulator {
 
     // AI Object Detection (TF.js + COCO-SSD)
     this.detector = new ObjectDetector();
+
+    // AI Vision Manager (Çoklu AI modelleri yönetimi)
+    this.aiVision = new AIVisionManager(this.detector);
 
     // Klavye Kontrolleri
     this.controls = new DroneControls(this.physics, this.detector);
@@ -1079,6 +1111,10 @@ class DroneSimulator {
    * requestAnimationFrame + deltaTime ile akıcı güncelleme
    */
   animate() {
+    // ═══ KRİTİK: requestAnimationFrame her koşulda çağrılmalı ═══
+    // Render loop ölürse tüm uygulama donar!
+    requestAnimationFrame(() => this.animate());
+    
     const now = performance.now();
     this.clock.deltaTime = (now - this.clock.lastTime) / 1000;
     this.clock.lastTime = now;
@@ -1203,6 +1239,19 @@ class DroneSimulator {
         );
       }
 
+      // AI Vision Manager: Çoklu AI modelleri güncelle ve render et
+      // try/catch ile sarmalı - hata olursa render loop ölmesin
+      try {
+        if (this.aiVision && this.aiVision.isAnyModelActive()) {
+          const detections = this.detector.detections;
+          this.aiVision.update(this.droneCamCanvas, this.droneCamCtx, detections);
+          this.aiVision.render(this.droneCamCtx, this.droneCamCanvas.width, this.droneCamCanvas.height);
+          this._drawAIActiveBadges();
+        }
+      } catch (aiErr) {
+        console.warn('AI Vision hata:', aiErr);
+      }
+
       // Zoom göstergesini çiz
       this._drawZoomIndicator();
     }
@@ -1219,8 +1268,6 @@ class DroneSimulator {
     // Her frame ana takip kamerasını render et
     this.viewer.scene.initializeFrame();
     this.viewer.scene.render(cesiumTime);
-
-    requestAnimationFrame(() => this.animate());
   }
 
   /**
@@ -1248,6 +1295,66 @@ class DroneSimulator {
 
     ctx.fillStyle = '#00d4ff';
     ctx.fillText(text, tx + 8, ty + 16);
+  }
+
+  /**
+   * Aktif AI modellerinin badge'lerini drone cam üzerine çiz
+   */
+  _drawAIActiveBadges() {
+    if (!this.aiVision) return;
+    
+    const activeModels = this.aiVision.getActiveModels();
+    if (activeModels.length === 0) return;
+
+    const ctx = this.droneCamCtx;
+    const badges = [];
+    
+    // Model ID'den kısa isim ve renge çevir
+    const modelInfo = {
+      objectTracking: { name: 'TRACK', color: '#ff6b6b' },
+      depthEstimation: { name: 'DEPTH', color: '#4ecdc4' },
+      segmentation: { name: 'SEG', color: '#a855f7' },
+      poseEstimation: { name: 'POSE', color: '#f59e0b' },
+      opticalFlow: { name: 'FLOW', color: '#06b6d4' }
+    };
+    
+    activeModels.forEach(modelId => {
+      if (modelInfo[modelId]) {
+        badges.push(modelInfo[modelId]);
+      }
+    });
+    
+    // Badge'leri çiz (sağ üst, zoom badge'in altında)
+    let yOffset = 38; // Zoom badge'in altı
+    const startX = this.droneCamCanvas.width - 70;
+    
+    badges.forEach((badge, i) => {
+      const x = startX;
+      const y = yOffset + (i * 22);
+      
+      // Arka plan
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(x, y, 60, 18);
+      
+      // Border
+      ctx.strokeStyle = badge.color;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, 60, 18);
+      
+      // Text
+      ctx.fillStyle = badge.color;
+      ctx.font = 'bold 10px Consolas, monospace';
+      ctx.fillText(badge.name, x + 8, y + 13);
+      
+      // Aktif göstergesi (yanıp sönen nokta)
+      const pulse = Math.sin(performance.now() / 200) * 0.3 + 0.7;
+      ctx.beginPath();
+      ctx.arc(x + 52, y + 9, 4, 0, Math.PI * 2);
+      ctx.fillStyle = badge.color;
+      ctx.globalAlpha = pulse;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
   }
 
   updateMinimap() {
