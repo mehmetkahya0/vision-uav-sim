@@ -159,19 +159,34 @@ export class WeatherSystem {
       viewer.scene.skyAtmosphere.hueShift = 0;
       viewer.scene.skyAtmosphere.saturationShift = 0;
       viewer.scene.skyAtmosphere.brightnessShift = 0;
+      viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a1628');
     } else {
-      // Gece: koyu gökyüzü
+      // Gece: zifiri karanlık gökyüzü
       viewer.scene.skyAtmosphere.hueShift = 0;
-      viewer.scene.skyAtmosphere.saturationShift = -0.3;
-      viewer.scene.skyAtmosphere.brightnessShift = -0.5;
+      viewer.scene.skyAtmosphere.saturationShift = -0.8;
+      viewer.scene.skyAtmosphere.brightnessShift = -0.95;
+      // Globe'u çok karanlık yap
+      viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#010203');
     }
 
-    // Fog yoğunluğu: Gece daha sisli
+    // Fog yoğunluğu: Gece çok daha yoğun (karanlık)
     const fogAmount = this.weather.visibility < 5000 ? 0.0005 : 0.0002;
-    viewer.scene.fog.density = fogAmount * (1 - sunIntensity * 0.5);
+    const nightFogMultiplier = sunIntensity < 0.1 ? 3.0 : 1.0;
+    viewer.scene.fog.density = fogAmount * (1 - sunIntensity * 0.5) * nightFogMultiplier;
+    viewer.scene.fog.minimumBrightness = sunIntensity < 0.1 ? 0.0 : 0.02;
 
-    // Globe aydınlanması
-    viewer.scene.globe.enableLighting = sunIntensity > 0.1;
+    // Globe aydınlanması - Gece'de aktif ama çok düşük
+    viewer.scene.globe.enableLighting = true;
+    
+    // Gece için imagery katmanı karartma
+    if (viewer.imageryLayers && viewer.imageryLayers.length > 0) {
+      const imageryLayer = viewer.imageryLayers.get(0);
+      if (sunIntensity < 0.1) {
+        imageryLayer.brightness = 0.15; // Gece çok karanlık
+      } else {
+        imageryLayer.brightness = 0.5 + sunIntensity * 0.5; // Gündüz normal
+      }
+    }
   }
 
   /**

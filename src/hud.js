@@ -231,18 +231,103 @@ export class HUD {
       if (physics.isCrashed) {
         this.crashWarning.classList.remove('hidden');
         this.crashWarning.style.animationDuration = '0.2s'; // Hızlı yanıp söner
+        // Crash nedenini göster
+        const reason = physics.getCrashReason ? physics.getCrashReason() : '';
+        if (reason && this.crashWarning.textContent.indexOf(reason) === -1) {
+          this.crashWarning.innerHTML = `💥 CRASH<br><small>${reason}</small>`;
+        }
       } else {
         this.crashWarning.classList.add('hidden');
+        this.crashWarning.innerHTML = '💥 CRASH';
       }
     }
 
     // ZEMİN YAKLAŞMA UYARISI
     if (this.collisionWarning) {
-      if (physics.isCollisionWarning && !physics.isCrashed) {
+      if (physics.isCollisionWarning && !physics.isCrashed && !physics.isGrounded) {
         this.collisionWarning.classList.remove('hidden');
+        // İniş hızı çok yüksekse özel uyarı
+        if (fd.verticalSpeed < physics.config.maxLandingVerticalSpeed) {
+          this.collisionWarning.innerHTML = '⚠️ PULL UP!<br><small>Dikey hız çok yüksek!</small>';
+          this.collisionWarning.style.background = 'rgba(255, 0, 0, 0.8)';
+        } else {
+          this.collisionWarning.innerHTML = '⚠️ TERRAIN';
+          this.collisionWarning.style.background = 'rgba(255, 100, 0, 0.8)';
+        }
       } else {
         this.collisionWarning.classList.add('hidden');
       }
+    }
+
+    // ════════════════════════════════════════
+    // YER DURUMU GÖSTERGESİ
+    // ════════════════════════════════════════
+    this.updateGroundStatus(physics, fd);
+  }
+
+  /**
+   * Yer durumu göstergesini güncelle
+   */
+  updateGroundStatus(physics, fd) {
+    // Ground status element'i bul veya oluştur
+    let groundStatus = document.getElementById('groundStatus');
+    if (!groundStatus) {
+      groundStatus = document.createElement('div');
+      groundStatus.id = 'groundStatus';
+      groundStatus.style.cssText = `
+        position: fixed;
+        bottom: 120px;
+        left: 20px;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-family: 'Orbitron', monospace;
+        font-size: 14px;
+        font-weight: bold;
+        text-transform: uppercase;
+        z-index: 1000;
+        transition: all 0.3s ease;
+      `;
+      document.body.appendChild(groundStatus);
+    }
+
+    if (physics.isGrounded) {
+      groundStatus.style.display = 'block';
+      
+      if (fd.airspeed < 0.5) {
+        // Durmuş
+        groundStatus.textContent = '🛬 PARKED';
+        groundStatus.style.background = 'rgba(0, 150, 0, 0.8)';
+        groundStatus.style.color = '#fff';
+      } else if (fd.airspeed < physics.config.vRotation) {
+        // Taxi / hazırlanıyor
+        groundStatus.textContent = `🚕 TAXI (V: ${fd.airspeed.toFixed(1)} m/s)`;
+        groundStatus.style.background = 'rgba(255, 180, 0, 0.8)';
+        groundStatus.style.color = '#000';
+      } else {
+        // Kalkış hızına ulaştı
+        groundStatus.textContent = `✈️ ROTATE! (V: ${fd.airspeed.toFixed(1)} m/s)`;
+        groundStatus.style.background = 'rgba(0, 200, 100, 0.9)';
+        groundStatus.style.color = '#fff';
+        groundStatus.style.animation = 'pulse 0.5s ease-in-out infinite';
+      }
+    } else if (fd.heightAboveTerrain < 50) {
+      // Alçak uçuş / iniş yaklaşması
+      groundStatus.style.display = 'block';
+      groundStatus.textContent = `🛬 AGL: ${fd.heightAboveTerrain.toFixed(0)}m | VS: ${fd.verticalSpeed.toFixed(1)} m/s`;
+      
+      // Dikey hız güvenli mi?
+      if (fd.verticalSpeed < physics.config.maxLandingVerticalSpeed) {
+        groundStatus.style.background = 'rgba(255, 50, 50, 0.9)';
+        groundStatus.style.color = '#fff';
+      } else if (fd.verticalSpeed < 0) {
+        groundStatus.style.background = 'rgba(255, 150, 0, 0.8)';
+        groundStatus.style.color = '#000';
+      } else {
+        groundStatus.style.background = 'rgba(0, 150, 200, 0.8)';
+        groundStatus.style.color = '#fff';
+      }
+    } else {
+      groundStatus.style.display = 'none';
     }
   }
 

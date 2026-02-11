@@ -39,6 +39,7 @@ class DroneSimulator {
     this.isTeleporting = false; // Teleport glitch engelleyici bayrak
     this.turboMode = false; // Easter egg: turbo modu
     this.qualityMode = 'performance'; // 'performance' veya 'quality'
+    this.nightVisionEnabled = false; // Gece görüş modu
     
     // ═══ PERFORMANS İZLEME ═══
     this.performanceStats = {
@@ -352,19 +353,40 @@ class DroneSimulator {
 
     // ═══ YUMUŞATILMIŞ POZİSYON KULLAN (titreme önleme) ═══
     // DroneModel'in smooth pozisyonunu kullan, yoksa physics'den al
-    let droneCartesian;
+    const pos = this.physics.getPosition();
+    let baseLon = pos.longitude;
+    let baseLat = pos.latitude;
+    let baseHeight = pos.height;
+    
     if (this.droneModel && this.droneModel.currentPosition) {
-      droneCartesian = this.droneModel.currentPosition;
-    } else {
-      const pos = this.physics.getPosition();
-      droneCartesian = Cesium.Cartesian3.fromDegrees(
-        pos.longitude,
-        pos.latitude,
-        pos.height
-      );
+      const carto = Cesium.Cartographic.fromCartesian(this.droneModel.currentPosition);
+      baseLon = Cesium.Math.toDegrees(carto.longitude);
+      baseLat = Cesium.Math.toDegrees(carto.latitude);
+      baseHeight = carto.height;
     }
     
+    // ═══ GIMBAL KAMERA OFSETİ ═══
+    // Kamera drone'un altında ve biraz önünde (gimbal pozisyonu)
     const headingRad = Cesium.Math.toRadians(this.physics.heading);
+    const pitchRad = Cesium.Math.toRadians(this.physics.pitch);
+    
+    // Ofset değerleri (metre)
+    const gimbalDown = 3.0;     // Drone altında 3m
+    const gimbalForward = 2.0;  // Drone önünde 2m
+    
+    // Heading'e göre öne offseti hesapla
+    const metersPerDegreeLon = 111320 * Math.cos(Cesium.Math.toRadians(baseLat));
+    const metersPerDegreeLat = 111320;
+    
+    const forwardOffsetX = Math.sin(headingRad) * gimbalForward;
+    const forwardOffsetY = Math.cos(headingRad) * gimbalForward;
+    
+    const camLon = baseLon + forwardOffsetX / metersPerDegreeLon;
+    const camLat = baseLat + forwardOffsetY / metersPerDegreeLat;
+    const camHeight = baseHeight - gimbalDown;
+    
+    const droneCartesian = Cesium.Cartesian3.fromDegrees(camLon, camLat, camHeight);
+    
     const cameraPitchRad = Cesium.Math.toRadians(this.physics.cameraPitch);
 
     // FPV kamerasını ayarla
@@ -391,6 +413,11 @@ class DroneSimulator {
       const h = this.droneCamCanvas.height;
       if (w > 0 && h > 0) {
         this.droneCamCtx.drawImage(cesiumCanvas, 0, 0, w, h);
+        
+        // ═══ GECE GÖRÜŞ MODU ═══
+        if (this.nightVisionEnabled) {
+          this.applyNightVisionFilter(w, h);
+        }
       }
     }
 
@@ -400,6 +427,114 @@ class DroneSimulator {
     camera.direction = savedDirection;
     camera.up = savedUp;
     camera.right = savedRight;
+  }
+
+  /**
+   * Gece Görüş Filtresi Uygula
+   * Yeşil tonlu, kontrast artırılmış görüntü
+   */
+  applyNightVisionFilter(w, h) {
+    const ctx = this.droneCamCtx;
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      // RGB değerlerini al
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      // Luminance hesapla (parlaklık)
+      const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+
+      // Kontrastı artır ve parlaklığı yükselt
+      let boosted = luminance * 2.5 + 30;
+      boosted = Math.min(255, Math.max(0, boosted));
+
+      // Yeşil tonlu gece görüş efekti
+      data[i] = boosted * 0.1;       // R - çok az
+      data[i + 1] = boosted;          // G - tam yeşil
+      data[i + 2] = boosted * 0.15;   // B - çok az
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+
+    // Scanline efekti (CRT tarzı çizgiler)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+    for (let y = 0; y < h; y += 3) {
+      ctx.fillRect(0, y, w, 1);
+    }
+
+    // Vignette efekti (köşeler karanlık)
+    const gradient = ctx.createRadialGradient(w/2, h/2, h * 0.3, w/2, h/2, h * 0.8);
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.6)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  /**
+   * Gece Görüş Modunu Aç/Kapat
+   */
+  toggleNightVision() {
+    this.nightVisionEnabled = !this.nightVisionEnabled;
+    
+    // UI güncelle
+    const container = document.getElementById('droneCameraContainer');
+    if (container) {
+      container.classList.toggle('night-vision-active', this.nightVisionEnabled);
+    }
+
+    // NV Badge güncelle
+    const nvBadge = document.getElementById('nvStatusBadge');
+    if (nvBadge) {
+      if (this.nightVisionEnabled) {
+        nvBadge.textContent = 'NV ON';
+        nvBadge.className = 'nv-badge nv-on';
+      } else {
+        nvBadge.textContent = 'NV OFF';
+        nvBadge.className = 'nv-badge nv-off';
+      }
+    }
+
+    // Floating badge göster
+    this.showNightVisionBadge();
+    
+    console.log(`🌙 Gece Görüş: ${this.nightVisionEnabled ? 'AÇIK' : 'KAPALI'}`);
+  }
+
+  /**
+   * Gece Görüş Badge göster
+   */
+  showNightVisionBadge() {
+    // Mevcut badge'i kaldır
+    const existing = document.querySelector('.night-vision-badge');
+    if (existing) existing.remove();
+
+    const badge = document.createElement('div');
+    badge.className = 'night-vision-badge';
+    badge.innerHTML = this.nightVisionEnabled 
+      ? '🌙 GECE GÖRÜŞ: AÇIK' 
+      : '☀️ GECE GÖRÜŞ: KAPALI';
+    badge.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: ${this.nightVisionEnabled ? 'rgba(0, 255, 0, 0.2)' : 'rgba(0, 0, 0, 0.7)'};
+      border: 2px solid ${this.nightVisionEnabled ? '#00ff00' : '#666'};
+      color: ${this.nightVisionEnabled ? '#00ff00' : '#fff'};
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-family: 'Consolas', monospace;
+      font-size: 16px;
+      font-weight: bold;
+      z-index: 9999;
+      text-shadow: 0 0 10px ${this.nightVisionEnabled ? '#00ff00' : '#000'};
+      animation: fadeOut 1.5s forwards;
+    `;
+    document.body.appendChild(badge);
+    setTimeout(() => badge.remove(), 1500);
   }
 
   /**

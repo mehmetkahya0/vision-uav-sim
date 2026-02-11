@@ -147,6 +147,28 @@ export class DronePhysics {
       // ═══ G-KUVVETİ ETKİSİ ═══
       gForceSpeedPenalty: 0.015, // G başına hız kaybı oranı (>1.5G)
       structuralGLimit: 4.5,     // Yapısal G limiti
+
+      // ═══ YER FİZİĞİ (GROUND PHYSICS) ═══
+      wheelHeight: 1.5,          // m (tekerlek yüksekliği - yer temas mesafesi)
+      rollingResistance: 0.08,   // Yuvarlanma sürtünme katsayısı (μ_r)
+      groundFriction: 0.4,       // Zemin sürtünme katsayısı (fren/kayma)
+      taxiYawRate: 25,           // deg/s (yerdeyken maksimum dönüş hızı)
+      brakeEfficiency: 0.7,      // Fren etkinliği (0-1)
+
+      // ═══ KALKIŞ DİNAMİĞİ (TAKE-OFF) ═══
+      vRotation: 15,             // m/s (kritik kalkış hızı - burun kaldıramaz altında)
+      takeoffPitchRate: 8,       // deg/s (kalkışta maksimum burun kaldırma hızı)
+      maxTakeoffAoA: 12,         // derece (kalkışta maksimum AoA - aşarsa sürat düşer)
+
+      // ═══ İNİŞ VE ÇARPIŞMA (LANDING & CRASH) ═══
+      maxLandingVerticalSpeed: -3, // m/s (güvenli iniş dikey hız limiti)
+      maxLandingRoll: 5,         // derece (iniş anında maksimum kanat açısı)
+      hardLandingThreshold: -5,  // m/s (sert iniş eşiği - hasar alır)
+      touchdownDamping: 0.85,    // Yere temas anında dikey hız sönümleme
+
+      // ═══ YER ETKİSİ (GROUND EFFECT) ═══
+      groundEffectHeight: 14.8,  // m (kanat açıklığı - yer etkisi mesafesi)
+      groundEffectMultiplier: 1.1, // Yer etkisinde lift artışı (%10)
     };
 
     // ═════════════════════════════════════════
@@ -187,6 +209,17 @@ export class DronePhysics {
     this.terrainHeight = 0;       // Metin yüksekliği (metre)
     this.collisionMargin = 20;    // Minimum güvenli yükseklik (metre, zemin üstü)
     this.isCollisionWarning = false;
+
+    // ═════════════════════════════════════════
+    // YER TEMAS SİSTEMİ (GROUND CONTACT)
+    // ═════════════════════════════════════════
+    this.isGrounded = false;           // Yerde mi?
+    this.heightAboveTerrain = startHeight; // Zemin üstü yükseklik (AGL)
+    this.verticalSpeed = 0;            // Dikey hız (m/s) - iniş için
+    this.groundContactTime = 0;        // Yer teması süresi
+    this.isTaxiing = false;            // Yerde hareket halinde mi?
+    this.landingGear = true;           // İniş takımları açık mı?
+    this.crashReason = '';             // Kaza nedeni
 
     // ═════════════════════════════════════════
     // İSTATİSTİKLER
@@ -247,6 +280,65 @@ export class DronePhysics {
     const cfg = this.config;
     const mass = cfg.mass;
     const g = cfg.gravity;
+
+    // ────────────────────────────────────────────
+    // ADIM 0: YER TEMAS TESPİTİ (GROUND CONTACT)
+    // ────────────────────────────────────────────
+    this.heightAboveTerrain = this.height - this.terrainHeight;
+    const previousGrounded = this.isGrounded;
+    this.isGrounded = this.heightAboveTerrain <= cfg.wheelHeight;
+    
+    // Dikey hız hesapla (iniş tespiti için)
+    this.verticalSpeed = this.climbRate;
+    
+    // Yerde hareket (taxiing) tespiti
+    this.isTaxiing = this.isGrounded && this.airspeed > 0.5;
+
+    // ══════════════════════════════════════════
+    // İNİŞ ANI TESPİTİ VE CRASH KONTROLÜ
+    // Havadan yere geçiş anında kontroller
+    // ══════════════════════════════════════════
+    if (this.isGrounded && !previousGrounded) {
+      // Az önce yere temas ettik - iniş anı!
+      this.groundContactTime = 0;
+      
+      // ── Dikey Hız Kontrolü ──
+      // Çok hızlı iniş = CRASH
+      if (this.verticalSpeed < cfg.maxLandingVerticalSpeed) {
+        const reason = this.verticalSpeed < cfg.hardLandingThreshold 
+          ? `Sert çarpma! Dikey hız: ${this.verticalSpeed.toFixed(1)} m/s`
+          : `Aşırı dikey hız: ${this.verticalSpeed.toFixed(1)} m/s (limit: ${cfg.maxLandingVerticalSpeed} m/s)`;
+        this.crash(reason);
+        return;
+      }
+      
+      // ── Kanat Açısı (Roll) Kontrolü ──
+      // Kanat ucu yere çarpması
+      if (Math.abs(this.roll) > cfg.maxLandingRoll) {
+        this.crash(`Kanat ucu yere çarptı! Roll açısı: ${this.roll.toFixed(1)}° (limit: ±${cfg.maxLandingRoll}°)`);
+        return;
+      }
+      
+      // ── Pitch Kontrolü (Burun/Kuyruk Çarpması) ──
+      if (this.pitch < -10) {
+        this.crash(`Burun yere çarptı! Pitch: ${this.pitch.toFixed(1)}°`);
+        return;
+      }
+      if (this.pitch > 20 && this.airspeed < cfg.vRotation) {
+        this.crash(`Kuyruk yere çarptı! Pitch: ${this.pitch.toFixed(1)}°`);
+        return;
+      }
+      
+      // Güvenli iniş - dikey hızı sönümle
+      this.climbRate *= cfg.touchdownDamping;
+      this.flightPathAngle *= 0.5;
+      console.log(`✈️ Başarılı iniş! Dikey hız: ${this.verticalSpeed.toFixed(1)} m/s`);
+    }
+
+    // Yerdeyken süre sayacı
+    if (this.isGrounded) {
+      this.groundContactTime += dt;
+    }
 
     // ────────────────────────────────────────────
     // ADIM 1: GAZ (THROTTLE) KONTROLÜ
@@ -323,7 +415,20 @@ export class DronePhysics {
     }
 
     CL = Cesium.Math.clamp(CL, -cfg.CLmax, cfg.CLmax);
-    const lift = q_dyn * cfg.wingArea * CL;
+    let lift = q_dyn * cfg.wingArea * CL;
+
+    // ══════════════════════════════════════════
+    // YER ETKİSİ (GROUND EFFECT)
+    // Kanat açıklığı mesafesinde yere yakınken
+    // lift kuvveti %10 artar (indüklenmiş drag azalır)
+    // L_ge = L × (1 + k × (b/h)²) yaklaşımı
+    // ══════════════════════════════════════════
+    if (this.heightAboveTerrain < cfg.groundEffectHeight && this.heightAboveTerrain > 0) {
+      const groundEffectRatio = 1 - (this.heightAboveTerrain / cfg.groundEffectHeight);
+      const groundEffectBonus = 1 + (cfg.groundEffectMultiplier - 1) * groundEffectRatio;
+      lift *= groundEffectBonus;
+    }
+
     this.currentLift = lift;
 
     // ══════════════════════════════════════════
@@ -390,16 +495,58 @@ export class DronePhysics {
       0.1, 1.8
     );
 
-    // ── Açısal İvmeler (deg/s²) ──
-    // Kontrol girdisi + aerodinamik sönümleme
-    const pDot = cfg.aileronAuthority * this.input.roll * controlEffectiveness
-                 - cfg.rollDamping * this.p;
+    // ══════════════════════════════════════════
+    // YER KONTROL SİSTEMİ (GROUND CONTROLS)
+    // Yerdeyken farklı kontrol mantığı uygula
+    // ══════════════════════════════════════════
+    let pDot, qDot, rDot;
+    
+    if (this.isGrounded) {
+      // ── YERDE KONTROL ──
+      
+      // Pitch kontrolü: V_rotation altında burun kaldıramaz!
+      // Kalkış hızına (V_rotation) ulaşmadan elevator etkisiz
+      let pitchAuthority = 0;
+      if (V >= cfg.vRotation) {
+        // Kalkış hızına ulaştı - pitch kontrolü aktif
+        // Hız arttıkça pitch kontrolü güçlenir
+        const rotationFactor = Math.min(1, (V - cfg.vRotation) / (cfg.vRotation * 0.5));
+        pitchAuthority = cfg.elevatorAuthority * rotationFactor * cfg.takeoffPitchRate / cfg.elevatorAuthority;
+        
+        // Kalkışta çok dik AoA = hız kaybı riski
+        if (this.angleOfAttack > cfg.maxTakeoffAoA && this.input.pitch > 0) {
+          // AoA çok yüksek - pitch artışını engelle ve hız düşür
+          pitchAuthority *= 0.3;
+          this.airspeed -= cfg.gForceSpeedPenalty * 5 * dt;
+        }
+      }
+      
+      // Roll: Yerdeyken aileronlar YAW kontrolü için kullanılır (tekerlek yönlendirme)
+      // Roll açısı minimum tutulur (kanat ucu çarpmasını önle)
+      const taxiYawFromRoll = this.input.roll * cfg.taxiYawRate;
+      
+      // Yaw: Normal rudder + tekerlek yönlendirmesi (roll input)
+      const combinedYawInput = this.input.yaw + this.input.roll * 0.7;
+      
+      // Açısal ivmeler (yerde)
+      pDot = -cfg.rollDamping * 3 * this.p; // Roll hızla sönümle (kanat düz kalsın)
+      qDot = pitchAuthority * this.input.pitch * controlEffectiveness - cfg.pitchDamping * this.q;
+      rDot = cfg.taxiYawRate * combinedYawInput - cfg.yawDamping * this.r;
+      
+      // Yerde roll açısını sıfıra zorla
+      this.p -= this.roll * 2.0 * dt;
+      
+    } else {
+      // ── HAVADA KONTROL (normal) ──
+      pDot = cfg.aileronAuthority * this.input.roll * controlEffectiveness
+                   - cfg.rollDamping * this.p;
 
-    const qDot = cfg.elevatorAuthority * this.input.pitch * controlEffectiveness
-                 - cfg.pitchDamping * this.q;
+      qDot = cfg.elevatorAuthority * this.input.pitch * controlEffectiveness
+                   - cfg.pitchDamping * this.q;
 
-    const rDot = cfg.rudderAuthority * this.input.yaw * controlEffectiveness
-                 - cfg.yawDamping * this.r;
+      rDot = cfg.rudderAuthority * this.input.yaw * controlEffectiveness
+                   - cfg.yawDamping * this.r;
+    }
 
     // ── Açısal Hızları Güncelle ──
     // Bu adım ATALETİ oluşturur:
@@ -468,15 +615,68 @@ export class DronePhysics {
     // ADIM 5: DOĞRUSAL DİNAMİKLER
     // ────────────────────────────────────────────
 
-    // ── Uçuş Yolu Boyunca İvme (Longitudinal) ──
-    // a_x = (T - D) / m - g·sin(γ)
-    const aLongitudinal = (this.currentThrust - drag) / mass - g * Math.sin(gammaRad);
+    // ══════════════════════════════════════════
+    // YERDE: SÜRTÜNME VE YUVARLANMA HESABI
+    // Yerdeyken farklı fizik kuralları uygula
+    // ══════════════════════════════════════════
+    let aLongitudinal;
+    let aNormal;
+    
+    if (this.isGrounded) {
+      // ── YER FİZİĞİ ──
+      
+      // Yer tepki kuvveti (Normal Force)
+      // N = m·g - L (lift yer tepkisini azaltır)
+      const normalForce = Math.max(0, mass * g - lift);
+      
+      // Yuvarlanma sürtünmesi (tekerlek direnci)
+      // F_r = μ_r · N
+      const rollingResistanceForce = cfg.rollingResistance * normalForce;
+      
+      // Zemin sürtünmesi (kayma/fren)
+      // Hız azaldıkça sürtünme artar (yapış-kayış modeli)
+      let frictionForce = 0;
+      if (this.throttle < 20 && V > 0.5) {
+        // Düşük gaz = fren etkisi
+        const brakingForce = cfg.groundFriction * normalForce * cfg.brakeEfficiency;
+        frictionForce = brakingForce * (1 - this.throttle / 20);
+      }
+      
+      // Toplam yavaşlatma kuvveti
+      const totalGroundResistance = rollingResistanceForce + frictionForce + drag;
+      
+      // Boylamsal ivme (yerde)
+      // a = (T - D - F_r - F_f) / m
+      aLongitudinal = (this.currentThrust - totalGroundResistance) / mass;
+      
+      // Dikey ivme = 0 (yerde)
+      aNormal = 0;
+      
+      // Yerde pitch'i sıfıra doğru çek (park pozisyonu)
+      if (V < cfg.vRotation) {
+        this.pitch = this.pitch * (1 - 2 * dt); // Yumuşak geçiş
+        this.flightPathAngle = 0;
+      }
+      
+      // Yere yapış (bounce önleme)
+      if (this.height < this.terrainHeight + cfg.wheelHeight) {
+        this.height = this.terrainHeight + cfg.wheelHeight;
+        this.climbRate = 0;
+      }
+      
+    } else {
+      // ── HAVA FİZİĞİ (normal) ──
+      
+      // Uçuş Yolu Boyunca İvme (Longitudinal)
+      // a_x = (T - D) / m - g·sin(γ)
+      aLongitudinal = (this.currentThrust - drag) / mass - g * Math.sin(gammaRad);
 
-    // ── Uçuş Yoluna Dik İvme (Normal) ──
-    // Banking'de lift'in dikey bileşeni azalır → irtifa kaybı
-    // L_vert = L·cos(φ)
-    const liftVertical = lift * Math.cos(rollRad);
-    const aNormal = liftVertical / mass - g * Math.cos(gammaRad);
+      // Uçuş Yoluna Dik İvme (Normal)
+      // Banking'de lift'in dikey bileşeni azalır → irtifa kaybı
+      // L_vert = L·cos(φ)
+      const liftVertical = lift * Math.cos(rollRad);
+      aNormal = liftVertical / mass - g * Math.cos(gammaRad);
+    }
 
     // ══════════════════════════════════════════
     // G-KUVVETİ HESABI
@@ -545,19 +745,26 @@ export class DronePhysics {
     this.longitude += (eastVel * dt) / metersPerDegreeLon;
 
     // Tırmanma hızı ve yükseklik
-    this.climbRate = V * Math.sin(gammaRad);
-    this.height += this.climbRate * dt;
-
-    // Yükseklik limitleri
-    if (this.height <= cfg.minHeight) {
-      this.height = cfg.minHeight;
-      this.climbRate = Math.max(0, this.climbRate);
-      this.flightPathAngle = Math.max(0, this.flightPathAngle);
-      // Yere çok sert çarpınca
-      if (this.airspeed < 5) {
+    if (!this.isGrounded) {
+      this.climbRate = V * Math.sin(gammaRad);
+      this.height += this.climbRate * dt;
+    } else {
+      // Yerde - yükseklik sabit
+      this.climbRate = 0;
+      this.height = this.terrainHeight + cfg.wheelHeight;
+      this.flightPathAngle = 0;
+      
+      // Yerde tamamen durduğunda
+      if (this.airspeed < 0.5) {
         this.airspeed = 0;
-        this.isOn = false;
+        this.groundSpeed = 0;
       }
+    }
+
+    // Yükseklik limitleri (havadayken)
+    if (!this.isGrounded && this.height <= this.terrainHeight + cfg.wheelHeight) {
+      // Yere yaklaşıyor - iniş temasına geç
+      this.height = this.terrainHeight + cfg.wheelHeight;
     }
     this.height = Cesium.Math.clamp(this.height, cfg.minHeight, cfg.maxHeight);
 
@@ -643,6 +850,13 @@ export class DronePhysics {
       thrust: this.currentThrust,
       lift: this.currentLift,
       drag: this.currentDrag,
+      // Yer Fiziği Verileri
+      isGrounded: this.isGrounded,
+      heightAboveTerrain: this.heightAboveTerrain,
+      verticalSpeed: this.verticalSpeed,
+      isTaxiing: this.isTaxiing,
+      isCrashed: this.isCrashed,
+      crashReason: this.crashReason,
     };
   }
 
@@ -670,31 +884,72 @@ export class DronePhysics {
 
     const altitudeAboveTerrain = this.height - this.terrainHeight;
 
-    // Zemin altına iniş = CRASH
-    if (altitudeAboveTerrain <= 0) {
-      this.crash();
+    // Zemin altına iniş = CRASH (kontrolsüz çarpma)
+    if (altitudeAboveTerrain < 0) {
+      this.crash('Zemine kontrolsüz çarpma!');
     }
   }
 
   /**
    * Crash durumunu tetikle
+   * @param {string} reason - Kaza nedeni
    */
-  crash() {
+  crash(reason = 'Bilinmeyen neden') {
     if (this.isCrashed) return;
 
     this.isCrashed = true;
+    this.crashReason = reason;
     this.crashTime = performance.now();
     this.throttle = 0;           // Motor hemen kes
     this.airspeed = 0;           // Hızı sıfırla
     this.isOn = false;           // Sistemi kapat
+    this.climbRate = 0;
+    this.groundSpeed = 0;
 
-    console.error('💥 CRASH! Drone çarptı!');
+    console.error(`💥 CRASH! ${reason}`);
+    
+    // Crash event'ı dispatch et (UI'nın yakalayiçi için)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dronecrash', { 
+        detail: { reason, time: this.crashTime } 
+      }));
+    }
   }
 
   /**
    * Crash durumunda olup olmadığını kontrol et
+   * @returns {boolean}
    */
   hasCrashed() {
     return this.isCrashed;
+  }
+
+  /**
+   * Crash nedenini döndür
+   * @returns {string}
+   */
+  getCrashReason() {
+    return this.crashReason || '';
+  }
+
+  /**
+   * Yer temas durumunu döndür
+   * @returns {boolean}
+   */
+  isOnGround() {
+    return this.isGrounded;
+  }
+
+  /**
+   * Uçuş verisine yer bilgileri ekle
+   */
+  getGroundData() {
+    return {
+      isGrounded: this.isGrounded,
+      heightAboveTerrain: this.heightAboveTerrain,
+      verticalSpeed: this.verticalSpeed,
+      isTaxiing: this.isTaxiing,
+      groundContactTime: this.groundContactTime,
+    };
   }
 }

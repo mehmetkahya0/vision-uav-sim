@@ -64,6 +64,37 @@ html, body {
   height: 100%;
 }
 
+/* ═══ GECE GÖRÜŞ MODU ═══ */
+#droneCameraContainer.night-vision-active {
+  border-color: rgba(0, 255, 0, 0.7);
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.4), 
+              0 0 40px rgba(0, 255, 0, 0.2),
+              inset 0 0 30px rgba(0, 255, 0, 0.1);
+}
+
+#droneCameraContainer.night-vision-active #cameraLabel {
+  color: #00ff00;
+  text-shadow: 0 0 8px rgba(0, 255, 0, 0.8);
+}
+
+#droneCameraContainer.night-vision-active #cameraLabel::before {
+  content: '◉ NV';
+  color: #00ff00;
+  animation: nvPulse 1s infinite;
+}
+
+@keyframes nvPulse {
+  0%, 100% { opacity: 1; text-shadow: 0 0 5px #00ff00; }
+  50% { opacity: 0.7; text-shadow: 0 0 15px #00ff00; }
+}
+
+/* Night Vision Badge Animation */
+@keyframes fadeOut {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  70% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+}
+
 #droneCameraView .cesium-viewer-bottom,
 #droneCameraView .cesium-widget-credits {
   display: none !important;
@@ -1091,6 +1122,42 @@ html, body {
 @keyframes badge-pulse {
   0%, 100% { box-shadow: 0 0 6px rgba(0, 255, 136, 0.3); }
   50% { box-shadow: 0 0 14px rgba(0, 255, 136, 0.6); }
+}
+
+/* ═══ Night Vision Badge (Drone Cam Overlay) ═══ */
+.nv-badge {
+  position: absolute;
+  top: 8px;
+  left: 70px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 1.5px;
+  z-index: 200;
+  pointer-events: none;
+  transition: all 0.3s ease;
+}
+
+.nv-on {
+  background: rgba(0, 255, 0, 0.2);
+  border: 1px solid rgba(0, 255, 0, 0.7);
+  color: #00ff00;
+  text-shadow: 0 0 10px rgba(0, 255, 0, 0.8);
+  animation: nv-badge-pulse 1.5s ease-in-out infinite;
+}
+
+.nv-off {
+  background: rgba(80, 80, 80, 0.25);
+  border: 1px solid rgba(80, 80, 80, 0.4);
+  color: #555;
+  text-shadow: none;
+}
+
+@keyframes nv-badge-pulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(0, 255, 0, 0.4); }
+  50% { box-shadow: 0 0 16px rgba(0, 255, 0, 0.8); }
 }
 
 /* Detection panel rows */
