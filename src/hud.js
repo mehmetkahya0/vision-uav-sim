@@ -9,6 +9,8 @@
  * - İkincil:  Throttle, Tırmanma Hızı, G-Kuvveti, AoA
  * - Durum:    Batarya, Uçuş Süresi, Koordinatlar
  * - Uyarılar: Stall, Overspeed, Yapısal G limiti
+ *
+ * OPTIMIZED: DOM updates throttled, cached values to prevent flickering
  */
 export class HUD {
   constructor() {
@@ -43,6 +45,14 @@ export class HUD {
 
     // Throttle bar
     this.throttleBar = document.getElementById('throttleBarFill');
+
+    // ── Optimizasyon: Cached values ──
+    this.cachedAltitude = null;
+    this.cachedSpeed = null;
+    this.cachedHeading = null;
+    this.cachedThrottle = null;
+    this.updateCounter = 0;
+    this.weatherUpdateCounter = 0;
   }
 
   update(physics, flightTimeSeconds) {
@@ -50,19 +60,31 @@ export class HUD {
     const orientation = physics.getOrientation();
     const fd = physics.getFlightData();
 
+    // Throttle DOM updates every 3 frames (called from main already throttled)
+    // Main loop zaten her 3 frame'de çağırıyor, burada ekstra kontrol gereksiz
+    // this.updateCounter++; // REMOVED - main loop throttles it
+
     // ════════════════════════════════════════
     // BİRİNCİL GÖSTERGELER
     // ════════════════════════════════════════
 
-    // YÜKSEKLİK (Altimeter)
+    // YÜKSEKLİK (Altimeter) - Only update if changed significantly
     if (this.elements.altitude) {
-      this.elements.altitude.textContent = `ALT: ${pos.height.toFixed(0)} m`;
+      const roundedAlt = Math.round(pos.height / 5) * 5; // Round to nearest 5m
+      if (this.cachedAltitude !== roundedAlt) {
+        this.elements.altitude.textContent = `ALT: ${pos.height.toFixed(0)} m`;
+        this.cachedAltitude = roundedAlt;
+      }
     }
 
     // HAVAHIZI (Airspeed Indicator)
     if (this.elements.speed) {
       const kmh = physics.getAirspeedKmh();
-      this.elements.speed.textContent = `TAS: ${kmh.toFixed(0)} km/h`;
+      const roundedSpeed = Math.round(kmh / 2) * 2; // Round to nearest 2 km/h
+      if (this.cachedSpeed !== roundedSpeed) {
+        this.elements.speed.textContent = `TAS: ${kmh.toFixed(0)} km/h`;
+        this.cachedSpeed = roundedSpeed;
+      }
 
       // Renk kodu: stall sarı → normal yeşil → overspeed kırmızı
       if (fd.isStalling) {
@@ -76,8 +98,12 @@ export class HUD {
 
     // YÖN (Heading / Compass)
     if (this.elements.heading) {
-      const compassDir = this.getCompassDirection(orientation.heading);
-      this.elements.heading.textContent = `HDG: ${orientation.heading.toFixed(0)}° ${compassDir}`;
+      const roundedHeading = Math.round(orientation.heading / 5) * 5; // Round to nearest 5°
+      if (this.cachedHeading !== roundedHeading) {
+        const compassDir = this.getCompassDirection(orientation.heading);
+        this.elements.heading.textContent = `HDG: ${orientation.heading.toFixed(0)}° ${compassDir}`;
+        this.cachedHeading = roundedHeading;
+      }
     }
 
     // PITCH & ROLL
@@ -93,7 +119,11 @@ export class HUD {
 
     // GAZ (Throttle)
     if (this.elements.throttle) {
-      this.elements.throttle.textContent = `THR: ${fd.throttle.toFixed(0)}%`;
+      const roundedThrottle = Math.round(fd.throttle / 2) * 2;
+      if (this.cachedThrottle !== roundedThrottle) {
+        this.elements.throttle.textContent = `THR: ${fd.throttle.toFixed(0)}%`;
+        this.cachedThrottle = roundedThrottle;
+      }
     }
 
     // Throttle Bar (görsel çubuk)

@@ -12,6 +12,11 @@ export class DroneModel {
   constructor(mainViewer) {
     this.mainViewer = mainViewer;
     this.entity = null;
+    
+    // Smoothing için interpolasyon state
+    this.currentPosition = null;
+    this.currentOrientation = null;
+    this.smoothingFactor = 12; // Titreme önleme için yumuşatma faktörü
   }
 
   async init() {
@@ -33,9 +38,6 @@ export class DroneModel {
         scale: 8.0,
         minimumPixelSize: 0,
         maximumScale: 800,
-        silhouetteColor: Cesium.Color.fromCssColorString('#00d4ff'),
-        silhouetteSize: 2.0,
-        colorBlendMode: Cesium.ColorBlendMode.HIGHLIGHT,
         color: Cesium.Color.WHITE,
       },
     });
@@ -80,11 +82,11 @@ export class DroneModel {
     console.log('✈️ İHA modeli yüklendi');
   }
 
-  update(physics) {
+  update(physics, dt = 0.016) {
     if (!this.entity) return;
 
     const pos = physics.getPosition();
-    const cartesian = Cesium.Cartesian3.fromDegrees(
+    const targetCartesian = Cesium.Cartesian3.fromDegrees(
       pos.longitude,
       pos.latitude,
       pos.height
@@ -107,33 +109,64 @@ export class DroneModel {
       physicsHPR.roll + modelOffset.roll
     );
 
-    const orientation = Cesium.Transforms.headingPitchRollQuaternion(
-      cartesian,
+    const targetOrientation = Cesium.Transforms.headingPitchRollQuaternion(
+      targetCartesian,
       finalHPR
     );
 
-    // Ana model pozisyon/yön güncelle
-    this.entity.position = cartesian;
-    this.entity.orientation = orientation;
+    // ═══ TİTREME ÖNLEME: Pozisyon ve Oryantasyon Yumuşatma ═══
+    const lerpFactor = Math.min(1.0, this.smoothingFactor * dt);
+    
+    // İlk frame veya reset durumu
+    if (!this.currentPosition) {
+      this.currentPosition = targetCartesian.clone();
+      this.currentOrientation = targetOrientation.clone();
+    } else {
+      // Pozisyon interpolasyonu (LERP)
+      Cesium.Cartesian3.lerp(
+        this.currentPosition,
+        targetCartesian,
+        lerpFactor,
+        this.currentPosition
+      );
+      
+      // Oryantasyon interpolasyonu (SLERP - küresel interpolasyon)
+      Cesium.Quaternion.slerp(
+        this.currentOrientation,
+        targetOrientation,
+        lerpFactor,
+        this.currentOrientation
+      );
+    }
 
-    // ── Navigasyon Işıkları ──
+    // Ana model pozisyon/yön güncelle (yumuşatılmış değerlerle)
+    this.entity.position = this.currentPosition;
+    this.entity.orientation = this.currentOrientation;
+
+    // ── Navigasyon Işıkları (yumuşatılmış pozisyondan) ──
+    // Smooth pozisyondan kartografik koordinat al
+    const smoothCarto = Cesium.Cartographic.fromCartesian(this.currentPosition);
+    const smoothLon = Cesium.Math.toDegrees(smoothCarto.longitude);
+    const smoothLat = Cesium.Math.toDegrees(smoothCarto.latitude);
+    const smoothHeight = smoothCarto.height;
+    
     const headingRad = Cesium.Math.toRadians(physics.heading);
     const wingSpan = 6.0;
 
-    const metersPerDegreeLon = 111320 * Math.cos(Cesium.Math.toRadians(pos.latitude));
+    const metersPerDegreeLon = 111320 * Math.cos(smoothCarto.latitude);
     const leftWingOffsetE = -wingSpan * Math.cos(headingRad);
     const leftWingOffsetN = wingSpan * Math.sin(headingRad);
 
     const leftPos = Cesium.Cartesian3.fromDegrees(
-      pos.longitude + leftWingOffsetE / metersPerDegreeLon,
-      pos.latitude + leftWingOffsetN / 111320,
-      pos.height + 0.1
+      smoothLon + leftWingOffsetE / metersPerDegreeLon,
+      smoothLat + leftWingOffsetN / 111320,
+      smoothHeight + 0.1
     );
 
     const rightPos = Cesium.Cartesian3.fromDegrees(
-      pos.longitude - leftWingOffsetE / metersPerDegreeLon,
-      pos.latitude - leftWingOffsetN / 111320,
-      pos.height + 0.1
+      smoothLon - leftWingOffsetE / metersPerDegreeLon,
+      smoothLat - leftWingOffsetN / 111320,
+      smoothHeight + 0.1
     );
 
     this.navLightLeft.position = leftPos;
@@ -144,9 +177,9 @@ export class DroneModel {
     const tailOffsetE = -3.5 * Math.sin(headingRad);
     const tailOffsetN = -3.5 * Math.cos(headingRad);
     const tailPos = Cesium.Cartesian3.fromDegrees(
-      pos.longitude + tailOffsetE / metersPerDegreeLon,
-      pos.latitude + tailOffsetN / 111320,
-      pos.height + 0.9
+      smoothLon + tailOffsetE / metersPerDegreeLon,
+      smoothLat + tailOffsetN / 111320,
+      smoothHeight + 0.9
     );
     this.strobLight.position = tailPos;
     this.strobLight.point.color = strobeOn

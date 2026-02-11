@@ -118,14 +118,16 @@ export class DronePhysics {
       // Açısal hızlara karşı direnci belirler
       // Yüksek = hızlı sönümleme, tuş bırakınca çabuk durur
       // Düşük  = uzun süre dönmeye devam eder (daha fazla atalet)
-      pitchDamping: 3.2,       // 1/s
-      rollDamping: 3.8,        // 1/s
-      yawDamping: 2.8,         // 1/s
+      // ARTIRILDI: Titreme önleme için daha agresif sönümleme
+      pitchDamping: 4.8,       // 1/s (3.2'den artırıldı)
+      rollDamping: 5.5,        // 1/s (3.8'den artırıldı)
+      yawDamping: 4.2,         // 1/s (2.8'den artırıldı)
 
       // ═══ STABİLİTE (OTOMATİK DENGELEME) ═══
       // Girdi yokken ufka/trim açısına dönme eğilimi
-      rollStability: 0.6,      // Roll → 0° eğilimi (1/s)
-      pitchStability: 0.4,     // Pitch → trim eğilimi (1/s)
+      // ARTIRILDI: Daha smooth, daha stabil hareket
+      rollStability: 1.4,      // Roll → 0° eğilimi (1/s) (0.6'dan artırıldı)
+      pitchStability: 0.9,     // Pitch → trim eğilimi (1/s) (0.4'ten artırıldı)
 
       // ═══ LİMİTLER ═══
       maxPitch: 60,            // derece (yapısal limit)

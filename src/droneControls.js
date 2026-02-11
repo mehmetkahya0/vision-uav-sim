@@ -137,6 +137,28 @@ export class DroneControls {
         }
       }
 
+      // Zaman Kontrol Paneli (J tuşu)
+      if (e.code === 'KeyJ') {
+        const timePanel = document.getElementById('timeControlPanel');
+        if (timePanel) {
+          timePanel.classList.toggle('hidden');
+        }
+      }
+
+      // Saat Geri (K tuşu) - 1 saat geri
+      if (e.code === 'KeyK') {
+        if (window.sim && window.sim.weather) {
+          window.sim.weather.adjustHour(-1);
+        }
+      }
+
+      // Saat İleri (L tuşu) - 1 saat ileri
+      if (e.code === 'KeyL') {
+        if (window.sim && window.sim.weather) {
+          window.sim.weather.adjustHour(1);
+        }
+      }
+
       // Yardım paneli
       if (e.code === 'Slash' && e.shiftKey) {
         this.toggleHelp();

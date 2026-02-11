@@ -861,6 +861,189 @@ html, body {
   50% { transform: scale(1.1) rotate(10deg); }
 }
 
+/* ═══ ZAMAN KONTROL PANELİ ═══ */
+#timeControlPanel {
+  position: absolute;
+  top: 20px;
+  right: 440px;
+  z-index: 50;
+  background: rgba(0, 20, 40, 0.92);
+  border: 1px solid rgba(255, 180, 0, 0.35);
+  border-radius: 8px;
+  padding: 10px 14px;
+  min-width: 220px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5),
+              0 0 30px rgba(255, 180, 0, 0.08),
+              inset 0 0 30px rgba(255, 180, 0, 0.02);
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+#timeControlPanel.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+}
+
+.time-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: #ffb400;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  text-shadow: 0 0 8px rgba(255, 180, 0, 0.4);
+}
+
+.time-icon {
+  font-size: 16px;
+  animation: time-pulse 2s infinite;
+}
+
+@keyframes time-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.time-body {
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+.time-display {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+#timeDisplayClock {
+  font-size: 28px;
+  font-weight: bold;
+  color: #ffcc00;
+  text-shadow: 0 0 15px rgba(255, 200, 0, 0.5);
+  letter-spacing: 3px;
+}
+
+.time-controls {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.time-btn {
+  background: rgba(255, 180, 0, 0.15);
+  border: 1px solid rgba(255, 180, 0, 0.4);
+  color: #ffcc00;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.time-btn:hover {
+  background: rgba(255, 180, 0, 0.3);
+  border-color: rgba(255, 180, 0, 0.7);
+  box-shadow: 0 0 10px rgba(255, 180, 0, 0.3);
+}
+
+.time-btn:active {
+  transform: scale(0.95);
+}
+
+.time-pause {
+  padding: 6px 16px;
+}
+
+.time-pause.paused {
+  background: rgba(255, 60, 60, 0.25);
+  border-color: rgba(255, 60, 60, 0.5);
+  color: #ff6666;
+}
+
+.time-speed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 10px;
+  color: rgba(255, 180, 0, 0.6);
+}
+
+.speed-btn {
+  background: rgba(255, 180, 0, 0.1);
+  border: 1px solid rgba(255, 180, 0, 0.3);
+  color: rgba(255, 200, 0, 0.7);
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 10px;
+  font-family: 'Consolas', monospace;
+  transition: all 0.2s;
+}
+
+.speed-btn:hover {
+  background: rgba(255, 180, 0, 0.2);
+  border-color: rgba(255, 180, 0, 0.5);
+}
+
+.speed-btn.active {
+  background: rgba(255, 180, 0, 0.35);
+  border-color: rgba(255, 180, 0, 0.7);
+  color: #ffcc00;
+  box-shadow: 0 0 8px rgba(255, 180, 0, 0.3);
+}
+
+.time-presets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 10px;
+  color: rgba(255, 180, 0, 0.6);
+}
+
+.preset-btn {
+  background: rgba(255, 180, 0, 0.1);
+  border: 1px solid rgba(255, 180, 0, 0.3);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.preset-btn:hover {
+  background: rgba(255, 180, 0, 0.25);
+  border-color: rgba(255, 180, 0, 0.6);
+  transform: scale(1.1);
+}
+
+.time-footer {
+  display: flex;
+  gap: 12px;
+  border-top: 1px solid rgba(255, 180, 0, 0.15);
+  padding-top: 6px;
+}
+
+.time-key {
+  font-size: 9px;
+  color: rgba(255, 180, 0, 0.5);
+  font-family: 'Consolas', monospace;
+}
+
+.time-key kbd {
+  background: rgba(255, 180, 0, 0.12);
+  border: 1px solid rgba(255, 180, 0, 0.3);
+  color: #ffb400;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  margin-right: 3px;
+}
+
 /* ═══ AI Badge (Drone Cam Overlay) ═══ */
 .ai-badge {
   position: absolute;
@@ -1096,3 +1279,54 @@ html, body {
   color: #00ff88;
 }
 
+.altitude-selector {
+  background: rgba(0, 50, 80, 0.5);
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  border-radius: 4px;
+  padding: 12px;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.altitude-selector.hidden {
+  display: none;
+}
+
+.altitude-selector label {
+  color: #00d4ff;
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  font-weight: bold;
+}
+
+.altitude-selector select {
+  background: rgba(0, 30, 50, 0.8);
+  color: #00ff88;
+  border: 1px solid rgba(0, 212, 255, 0.4);
+  border-radius: 3px;
+  padding: 6px 8px;
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+}
+
+.altitude-selector select:hover {
+  border-color: rgba(0, 212, 255, 0.8);
+  background: rgba(0, 40, 70, 0.9);
+}
+
+.altitude-selector select:focus {
+  outline: none;
+  border-color: #00d4ff;
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.3);
+}
+
+.altitude-selector select option {
+  background: rgba(0, 30, 50, 0.95);
+  color: #00ff88;
+}

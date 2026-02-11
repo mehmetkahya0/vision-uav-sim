@@ -21,8 +21,8 @@ export class DroneCamera {
     // ── Takip Kamerası Ayarları ──
     this.followDistance = 45;
     this.followHeight = 18;
-    this.followSmoothing = 2.8;
-    this.rollInfluence = 0.15;
+    this.followSmoothing = 1.2;  // Düşürüldü: titreme önleme
+    this.rollInfluence = 0.06;    // Düşürüldü: roll titremesini azalt
 
     // Mevcut kamera pozisyonu (yumuşatılmış)
     this.currentCamPosition = null;
@@ -38,6 +38,9 @@ export class DroneCamera {
     this.orbitSmoothing = 5.0;    // Yumuşatma
     this.orbitSensitivity = 0.3;  // Mouse hassasiyeti
 
+    // Orbit smoothing düşürüldü: daha yumuşak kamera
+    this.orbitSmoothing = 2.5;    // 5.0'dan düşürüldü
+    
     // Orbit state
     this.isDragging = false;
     this.lastMouseX = 0;
@@ -80,8 +83,9 @@ export class DroneCamera {
       this.lastMouseY = movement.endPosition.y;
 
       // Yaw (yatay dönüş) ve Pitch (dikey dönüş)
-      this.orbitYaw += dx * this.orbitSensitivity;
-      this.orbitPitch -= dy * this.orbitSensitivity;
+      // Faster rotation for better responsiveness
+      this.orbitYaw += dx * (this.orbitSensitivity * 1.2);
+      this.orbitPitch -= dy * (this.orbitSensitivity * 1.2);
 
       // Pitch sınırlama (-80° ile +60° arası)
       this.orbitPitch = Cesium.Math.clamp(this.orbitPitch, -80, 60);
@@ -180,6 +184,7 @@ export class DroneCamera {
       this.currentCamPosition = targetCartesian.clone();
       this.currentCamHeading = this.physics.heading;
     } else {
+      // Düşük lerp faktör: titreme önleme, smooth kamera hareketi
       const lerpFactor = Math.min(1, this.followSmoothing * dt);
       Cesium.Cartesian3.lerp(
         this.currentCamPosition,
@@ -206,6 +211,8 @@ export class DroneCamera {
         pitch: Cesium.Math.toRadians(lookDownAngle),
         roll: Cesium.Math.toRadians(this.currentCamRoll),
       },
+      duration: 0,
+      easingFunction: undefined,
     });
   }
 
@@ -224,6 +231,8 @@ export class DroneCamera {
         pitch: pitchRad,
         roll: rollRad,
       },
+      duration: 0,
+      easingFunction: undefined,
     });
   }
 
@@ -257,7 +266,7 @@ export class DroneCamera {
 
     const targetCartesian = Cesium.Cartesian3.fromDegrees(camLon, camLat, camHeight);
 
-    // Yumuşak geçiş
+    // Yumuşak geçiş: titreme önleme
     if (!this.currentOrbitPosition) {
       this.currentOrbitPosition = targetCartesian.clone();
     } else {
@@ -294,6 +303,8 @@ export class DroneCamera {
         pitch: lookPitch,
         roll: 0,
       },
+      duration: 0,
+      easingFunction: undefined,
     });
   }
 }

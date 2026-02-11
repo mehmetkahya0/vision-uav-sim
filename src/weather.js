@@ -155,15 +155,15 @@ export class WeatherSystem {
     
     // Sky atmosfer rengi
     if (hour >= 6 && hour < 18) {
-      // Gündüz: mavi gökyüzü - parlak saatlerde daha doygun, sabah/akşamda daha açık
-      const dayProgress = (hour - 6) / 12;
-      const colorShift = Math.abs(Math.sin(dayProgress * Math.PI));
+      // Gündüz: normal mavi gökyüzü
       viewer.scene.skyAtmosphere.hueShift = 0;
-      viewer.scene.skyAtmosphere.saturationShift = 0.5 + (colorShift * 0.5); // 0.5 - 1.0 arasında
+      viewer.scene.skyAtmosphere.saturationShift = 0;
+      viewer.scene.skyAtmosphere.brightnessShift = 0;
     } else {
-      // Gece: lacivert/siyah
-      viewer.scene.skyAtmosphere.hueShift = -0.3;
-      viewer.scene.skyAtmosphere.saturationShift = -0.5;
+      // Gece: koyu gökyüzü
+      viewer.scene.skyAtmosphere.hueShift = 0;
+      viewer.scene.skyAtmosphere.saturationShift = -0.3;
+      viewer.scene.skyAtmosphere.brightnessShift = -0.5;
     }
 
     // Fog yoğunluğu: Gece daha sisli
@@ -270,6 +270,47 @@ export class WeatherSystem {
     this.gameTime.hour = Math.floor(hour) % 24;
     this.gameTime.minute = Math.floor(minute) % 60;
     this.gameTime.second = 0;
+  }
+
+  /**
+   * Saati belirli miktarda ayarla (+/- saat)
+   */
+  adjustHour(delta) {
+    let newHour = this.gameTime.hour + delta;
+    if (newHour < 0) newHour += 24;
+    if (newHour >= 24) newHour -= 24;
+    this.gameTime.hour = newHour;
+    console.log(`🕐 Saat: ${String(this.gameTime.hour).padStart(2, '0')}:${String(this.gameTime.minute).padStart(2, '0')}`);
+  }
+
+  /**
+   * Zaman hızını ayarla
+   */
+  setTimeScale(scale) {
+    this.timeScale = Math.max(0, Math.min(600, scale));
+    console.log(`⏱️ Zaman hızı: ${this.timeScale}x`);
+  }
+
+  /**
+   * Zamanı duraklat/devam et
+   */
+  togglePause() {
+    if (this._pausedTimeScale === undefined) {
+      this._pausedTimeScale = this.timeScale;
+      this.timeScale = 0;
+      return true; // paused
+    } else {
+      this.timeScale = this._pausedTimeScale;
+      delete this._pausedTimeScale;
+      return false; // resumed
+    }
+  }
+
+  /**
+   * Zamanın duraklatılıp duraklatılmadığını kontrol et
+   */
+  isPaused() {
+    return this._pausedTimeScale !== undefined;
   }
 
   /**

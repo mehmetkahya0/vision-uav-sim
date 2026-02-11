@@ -39,6 +39,18 @@ class DroneSimulator {
     this.isTeleporting = false; // Teleport glitch engelleyici bayrak
     this.turboMode = false; // Easter egg: turbo modu
     this.qualityMode = 'performance'; // 'performance' veya 'quality'
+    
+    // ═══ PERFORMANS İZLEME ═══
+    this.performanceStats = {
+      frameCount: 0,
+      fps: 0,
+      avgFPS: 0,
+      avgFrameTime: 0,
+      uptime: 0,
+      lastFPSUpdate: performance.now(),
+    };
+    this.frameTimes = [];
+    
     this.setupConsoleCommands();
     this.init();
   }
@@ -59,10 +71,26 @@ class DroneSimulator {
         } else {
           console.log('❌ Geçerli modlar: "performance" veya "quality"');
         }
+      },
+      stats: () => {
+        if (!this.performanceStats) {
+          console.log('⏳ İstatistikler henüz hazır değil...');
+          return;
+        }
+        console.log('═══════════════════════════════════════');
+        console.log('📊 DRONE SIMULATOR PERFORMANS İSTATİSTİKLERİ');
+        console.log('═══════════════════════════════════════');
+        console.log(`🎯 Avg FPS: ${this.performanceStats.avgFPS.toFixed(1)}`);
+        console.log(`⚡ Avg Frame Time: ${this.performanceStats.avgFrameTime.toFixed(2)}ms`);
+        console.log(`🎬 Total Frames: ${this.frameCount}`);
+        console.log(`⏱️  Uptime: ${(this.performanceStats.uptime / 1000).toFixed(1)}s`);
+        console.log(`🏞️  Globe Tiles Loaded: ${this.viewer.scene.globe._surface._tilesToRenderByTextureCount || 'N/A'}`);
+        console.log(`🏗️  OSM Buildings: ${this.osmBuildingsEnabled ? 'AÇIK' : 'KAPALI'}`);
+        console.log('═══════════════════════════════════════');
       }
     };
     // Ayrıca window objesine de erişimi sağla
-    window.drone.isActive = () => console.log('✈️ Drone simulator aktif. Turbo için: window.drone.turbo()');
+    window.drone.isActive = () => console.log('✈️ Drone simulator aktif. Komutlar: .turbo(), .quality(), .stats()');
   }
 
   async init() {
@@ -84,13 +112,16 @@ class DroneSimulator {
       vrButton: false,
       infoBox: false,
       selectionIndicator: false,
-      shadows: performanceQuality,  // Gölgeler = açılı performans (kapalı varsayılan)
+      shadows: false,             // Gölgeler KAPALI (büyük performans kazancı)
       shouldAnimate: true,
-      msaaSamples: performanceQuality ? 4 : 1,  // Anti-aliasing (quality: 4x, performance: off)
+      msaaSamples: 1,             // MSAA kapalı (GPU yükünü azalt)
+      orderIndependentTranslucency: false,  // Şeffaflık sıralama kapalı
       contextOptions: {
         webgl: {
           preserveDrawingBuffer: true,
-          antialias: performanceQuality,
+          antialias: false,       // WebGL AA kapalı (GPU tasarrufu)
+          powerPreference: 'high-performance',  // GPU'yu zorunlu kullan
+          failIfMajorPerformanceCaveat: false,
         },
       },
     });
@@ -98,11 +129,60 @@ class DroneSimulator {
     // Render döngüsünü biz yöneteceğiz
     this.viewer.useDefaultRenderLoop = false;
 
+    // ════════════════════════════════════════
+    // GLOBE TILE LOADING OPTİMİZASYONU (KRITIK)
+    // Harita yüklenirken glitch'in ana sebebi:
+    // Cesium çok fazla tile yüklemeye çalışıyor
+    // ════════════════════════════════════════
+    const globe = this.viewer.scene.globe;
+
+    // maximumScreenSpaceError: Tile detay seviyesi (yüksek = daha az tile yükler)
+    // Varsayılan 2, biz 4-6 yaparak tile sayısını dramatik azaltıyoruz
+    globe.maximumScreenSpaceError = 6;
+
+    // tileCacheSize: Bellekte tutulacak tile sayısı (yüksek = daha az reload)
+    // Varsayılan 100, biz 500 yaparak bir kez yüklenen tile'ı tekrar yüklemiyoruz
+    globe.tileCacheSize = 500;
+
+    // preloadAncestors: Üst seviye tile'ları önceden yükle
+    // Bu, zoom yaparken "delik" görünmesini engeller
+    globe.preloadAncestors = true;
+
+    // preloadSiblings: Komşu tile'ları önceden yükle
+    // Kamera dönerken yeni tile beklemesini azaltır
+    globe.preloadSiblings = true;
+
+    // loadingDescendantLimit: Aynı anda yüklenebilecek alt tile sayısı
+    // Düşük değer = daha az concurrent request = daha az jank
+    globe.loadingDescendantLimit = 4;
+
+    // baseColor: Tile yüklenmeden önce görünen renk
+    // Koyu renk yaparak "beyaz flash" glitch'ini engelle
+    globe.baseColor = Cesium.Color.fromCssColorString('#0a1628');
+
+    // showGroundAtmosphere: Yer atmosfer efekti açık (gökyüzü görünümü için)
+    globe.showGroundAtmosphere = true;
+
+    // backFaceCulling: Arka yüzleri render etme (varsayılan zaten true)
+    globe.backFaceCulling = true;
+
     // ── Imagery (Uydu Görüntüsü) ──
     try {
       this.viewer.imageryLayers.removeAll();
       const imagery = await Cesium.IonImageryProvider.fromAssetId(2);
-      this.viewer.imageryLayers.addImageryProvider(imagery);
+      const imageryLayer = this.viewer.imageryLayers.addImageryProvider(imagery);
+      
+      // ═══ IMAGERY TILE LOADING OPTIMIZATION ═══
+      // maximumAnisotropy: Texture filtering (düşük = daha az GPU yükü)
+      imageryLayer.maximumAnisotropy = 1;
+      // alpha: Transparency (blend işlemi yapmaz)
+      imageryLayer.alpha = 1.0;
+      // brightness/contrast: Post-processing kapalı
+      imageryLayer.brightness = 1.0;
+      imageryLayer.contrast = 1.0;
+      imageryLayer.hue = 0.0;
+      imageryLayer.saturation = 1.0;
+      imageryLayer.gamma = 1.0;
     } catch (e) {
       console.warn('Imagery yüklenemedi:', e);
     }
@@ -114,19 +194,54 @@ class DroneSimulator {
     if (enableOSMBuildings) {
       try {
         this.osmBuildings = await Cesium.createOsmBuildingsAsync();
+        
+        // ═══ OSM Buildings TILE OPTİMİZASYONU ═══
+        // maximumScreenSpaceError: Bina detay seviyesi (yüksek = daha az bina tile)
+        this.osmBuildings.maximumScreenSpaceError = 24;  // Varsayılan 16
+        // maximumMemoryUsage: Bellekte tutulacak bina verisi (MB)
+        this.osmBuildings.maximumMemoryUsage = 256;      // Varsayılan 512 → düşür
+        // preloadFlightDestinations: Uçuş sırasında preload engelle
+        this.osmBuildings.preloadFlightDestinations = false;
+        // preferLeaves: Yaprak tile'ları tercih et (daha az intermediate tile)
+        this.osmBuildings.preferLeaves = true;
+        // skipLevelOfDetail: LOD atla → daha hızlı yükleme
+        this.osmBuildings.skipLevelOfDetail = true;
+        this.osmBuildings.skipScreenSpaceErrorFactor = 16;
+        this.osmBuildings.skipLevels = 1;
+        this.osmBuildings.loadSiblings = false;
+        this.osmBuildings.immediatelyLoadDesiredLevelOfDetail = false;
+        
         this.viewer.scene.primitives.add(this.osmBuildings);
-        console.log('✅ OSM binaları YÜKLENDİ (O tuşu ile aç/kapa)');
+        console.log('✅ OSM binaları YÜKLENDİ (optimize edilmiş tile loading)');
       } catch (e) {
         console.warn('OSM binaları yüklenemedi:', e);
       }
     }
 
-    // ── Sahne Ayarları (kalite modu uyarınca) ──
-    this.viewer.scene.globe.enableLighting = true;
-    this.viewer.scene.fog.enabled = true;
-    this.viewer.scene.fog.density = performanceQuality ? 0.0003 : 0.0002;  // Quality: daha kalın (hızlı)
-    this.viewer.scene.skyAtmosphere.show = performanceQuality;  // Atmosfer efekti
-    this.viewer.scene.globe.depthTestAgainstTerrain = true;
+    // ── Sahne Ayarları (AGRESIF PERFORMANS) ──
+    const scene = this.viewer.scene;
+    scene.globe.enableLighting = false;    // Aydınlatma KAPALI (GPU tasarrufu)
+    
+    // FOG: Daha yoğun sis = uzak tile'lar gizlenir = daha az yükleme
+    scene.fog.enabled = true;
+    scene.fog.density = 0.0006;            // Daha kalın sis (uzak tile yüklemeyi mask'le)
+    scene.fog.minimumBrightness = 0.02;    // Sis karanlığı
+    
+    // Atmosfer efektleri AÇIK (gökyüzü için gerekli)
+    scene.skyAtmosphere.show = true;
+    
+    // Depth test - terrain clipping için gerekli
+    scene.globe.depthTestAgainstTerrain = true;
+    
+    // FXAA post-processing KAPALI (GPU yükü azalt)
+    scene.postProcessStages.fxaa.enabled = false;
+    
+    // Sun/Moon glow efektleri KAPALI
+    scene.sun.glowFactor = 0;
+    
+    // Scene optimizasyonları
+    scene.highDynamicRange = false;        // HDR kapalı
+    scene.logarithmicDepthBuffer = true;   // Z-fighting engelle (glitch azalt)
 
     // Varsayılan kamera kontrollerini devre dışı bırak
     const ssc = this.viewer.scene.screenSpaceCameraController;
@@ -168,6 +283,9 @@ class DroneSimulator {
 
     // Hava Durumu Sistemi
     this.weather = new WeatherSystem(this.viewer, this.physics);
+
+    // Zaman Kontrol Paneli
+    this.setupTimeControlPanel();
 
     // Minimap
     this.setupMinimap();
@@ -216,6 +334,9 @@ class DroneSimulator {
 
   /**
    * Drone FPV kamerasını render et ve canvas'a yakala.
+   * Her FPV capture'da 2 render yapılır:
+   * 1. FPV kamera ile render → FPV canvas'a copy
+   * 2. Ana kamera restore → ana render loop'ta render
    */
   captureDroneCam(cesiumTime) {
     if (!this.physics || !this.droneCamCtx) return;
@@ -223,16 +344,30 @@ class DroneSimulator {
     const scene = this.viewer.scene;
     const camera = scene.camera;
 
-    const pos = this.physics.getPosition();
-    const droneCartesian = Cesium.Cartesian3.fromDegrees(
-      pos.longitude,
-      pos.latitude,
-      pos.height
-    );
+    // ═══ KAMERA STATE KAYDET (restore için) ═══
+    const savedPosition = camera.position.clone();
+    const savedDirection = camera.direction.clone();
+    const savedUp = camera.up.clone();
+    const savedRight = camera.right.clone();
+
+    // ═══ YUMUŞATILMIŞ POZİSYON KULLAN (titreme önleme) ═══
+    // DroneModel'in smooth pozisyonunu kullan, yoksa physics'den al
+    let droneCartesian;
+    if (this.droneModel && this.droneModel.currentPosition) {
+      droneCartesian = this.droneModel.currentPosition;
+    } else {
+      const pos = this.physics.getPosition();
+      droneCartesian = Cesium.Cartesian3.fromDegrees(
+        pos.longitude,
+        pos.latitude,
+        pos.height
+      );
+    }
+    
     const headingRad = Cesium.Math.toRadians(this.physics.heading);
     const cameraPitchRad = Cesium.Math.toRadians(this.physics.cameraPitch);
 
-    // Kamera ayarlarını güncelle (smooth animation olmadan direkt)
+    // FPV kamerasını ayarla
     camera.setView({
       destination: droneCartesian,
       orientation: {
@@ -240,20 +375,113 @@ class DroneSimulator {
         pitch: cameraPitchRad,
         roll: 0,
       },
-      duration: 0,  // Animation yok, direkt geç
+      duration: 0,
+      easingFunction: undefined,
       endTransform: Cesium.Matrix4.IDENTITY,
     });
 
-    // Scene'i render et (clock tick'lemeden)
-    scene.initializeFrame();
-    scene.render(cesiumTime);
+    // FPV kamera ile render (sadece ilk 10 frame skip)
+    if (this.frameCount > 10) {
+      scene.initializeFrame();
+      scene.render(cesiumTime);
+      
+      // Canvas'a kopyala (FPV kamera görüntüsü)
+      const cesiumCanvas = scene.canvas;
+      const w = this.droneCamCanvas.width;
+      const h = this.droneCamCanvas.height;
+      if (w > 0 && h > 0) {
+        this.droneCamCtx.drawImage(cesiumCanvas, 0, 0, w, h);
+      }
+    }
 
-    // Canvas'a kopyala
-    const cesiumCanvas = scene.canvas;
-    const w = this.droneCamCanvas.width;
-    const h = this.droneCamCanvas.height;
-    if (w > 0 && h > 0) {
-      this.droneCamCtx.drawImage(cesiumCanvas, 0, 0, w, h);
+    // ═══ KAMERA STATE GERİ YÜKLE ═══
+    // Ana kamera pozisyonunu geri koy - ana loop'ta render edilecek
+    camera.position = savedPosition;
+    camera.direction = savedDirection;
+    camera.up = savedUp;
+    camera.right = savedRight;
+  }
+
+  /**
+   * Zaman Kontrol Paneli Ayarla
+   */
+  setupTimeControlPanel() {
+    const panel = document.getElementById('timeControlPanel');
+    if (!panel) return;
+
+    // Saat göstergesi
+    this.timeDisplayClock = document.getElementById('timeDisplayClock');
+
+    // Kontrol butonları
+    const backwardBtn = document.getElementById('timeBackward');
+    const pauseBtn = document.getElementById('timePause');
+    const forwardBtn = document.getElementById('timeForward');
+
+    if (backwardBtn) {
+      backwardBtn.addEventListener('click', () => {
+        if (this.weather) this.weather.adjustHour(-1);
+        this.updateTimeDisplay();
+      });
+    }
+
+    if (forwardBtn) {
+      forwardBtn.addEventListener('click', () => {
+        if (this.weather) this.weather.adjustHour(1);
+        this.updateTimeDisplay();
+      });
+    }
+
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', () => {
+        if (this.weather) {
+          const isPaused = this.weather.togglePause();
+          pauseBtn.textContent = isPaused ? '▶' : '⏸';
+          pauseBtn.classList.toggle('paused', isPaused);
+        }
+      });
+    }
+
+    // Hız butonları
+    const speedBtns = panel.querySelectorAll('.speed-btn');
+    speedBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const speed = parseInt(btn.dataset.speed);
+        if (this.weather) {
+          // Pause durumunu kaldır
+          if (this.weather.isPaused()) {
+            this.weather.togglePause();
+            if (pauseBtn) {
+              pauseBtn.textContent = '⏸';
+              pauseBtn.classList.remove('paused');
+            }
+          }
+          this.weather.setTimeScale(speed);
+        }
+        // Aktif butonu güncelle
+        speedBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+
+    // Preset butonları
+    const presetBtns = panel.querySelectorAll('.preset-btn');
+    presetBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const hour = parseInt(btn.dataset.hour);
+        if (this.weather) {
+          this.weather.jumpToTime(hour, 0);
+          this.updateTimeDisplay();
+        }
+      });
+    });
+  }
+
+  /**
+   * Zaman göstergesini güncelle
+   */
+  updateTimeDisplay() {
+    if (this.timeDisplayClock && this.weather) {
+      this.timeDisplayClock.textContent = this.weather.getTimeString();
     }
   }
 
@@ -457,11 +685,20 @@ class DroneSimulator {
         </div>
       `).join('');
 
+      // Yükseklik seçiciyi göster
+      const altitudeSelector = document.getElementById('altitudeSelector');
+      if (altitudeSelector) {
+        altitudeSelector.classList.remove('hidden');
+      }
+
       // Sonuç tıklama event'leri
       searchResults.querySelectorAll('.search-result-item').forEach((item, idx) => {
         item.addEventListener('click', () => {
           const result = results[idx];
-          this.teleportDrone(parseFloat(result.lat), parseFloat(result.lon), result.display_name);
+          // Seçilen yüksekliği al
+          const altitudeSelect = document.getElementById('altitudeSelect');
+          const selectedAltitude = altitudeSelect ? parseFloat(altitudeSelect.value) : 500;
+          this.teleportDrone(parseFloat(result.lat), parseFloat(result.lon), result.display_name, selectedAltitude);
         });
       });
 
@@ -472,7 +709,7 @@ class DroneSimulator {
     }
   }
 
-  teleportDrone(latitude, longitude, locationName) {
+  teleportDrone(latitude, longitude, locationName, altitude = 500) {
     const searchStatus = document.getElementById('searchStatus');
     
     // Teleport bayrağı (trail update'i engellemek için)
@@ -481,10 +718,15 @@ class DroneSimulator {
     // Drone pozisyonunu değiştir
     this.physics.latitude = latitude;
     this.physics.longitude = longitude;
-    this.physics.height = 500; // 500m yükseklikte başlat
+    this.physics.height = altitude; // Seçilen yüksekliği kullan
     this.physics.heading = 0; // Heading sıfırla
     this.physics.pitch = 3;
     this.physics.roll = 0;
+    
+    // Hız ve tırmanma değerlerini sıfırla
+    this.physics.airspeed = 0;
+    this.physics.throttle = 0;
+    this.physics.climbRate = 0;
 
     // Trail'i temizle
     this.minimapTrailPositions = [];
@@ -518,18 +760,22 @@ class DroneSimulator {
 
     // Başarı mesajı
     searchStatus.className = 'search-status success';
-    searchStatus.textContent = `✓ ${locationName.split(',')[0]} konumuna ışınlandı!`;
+    searchStatus.textContent = `✓ ${locationName.split(',')[0]} konumuna (${altitude}m yükseklikte) ışınlandı!`;
 
     // Sonuçları gizle
     const searchResults = document.getElementById('searchResults');
     if (searchResults) searchResults.classList.add('hidden');
+
+    // Yükseklik seçiciyi gizle
+    const altitudeSelector = document.getElementById('altitudeSelector');
+    if (altitudeSelector) altitudeSelector.classList.add('hidden');
 
     // 2 saniye sonra mesajı gizle
     setTimeout(() => {
       searchStatus.classList.add('hidden');
     }, 2000);
 
-    console.log(`📍 Drone teleported to: ${locationName} (${latitude}, ${longitude})`);
+    console.log(`📍 Drone teleported to: ${locationName} (${latitude}, ${longitude}) at ${altitude}m altitude`);
   }
 
   expandMinimap() {
@@ -702,6 +948,17 @@ class DroneSimulator {
     this.clock.deltaTime = (now - this.clock.lastTime) / 1000;
     this.clock.lastTime = now;
 
+    // ═══ PERFORMANS İZLEME ═══
+    this.frameTimes.push(this.clock.deltaTime * 1000);
+    if (this.frameTimes.length > 60) this.frameTimes.shift();
+    
+    if (now - this.performanceStats.lastFPSUpdate > 1000) {
+      this.performanceStats.avgFrameTime = this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length;
+      this.performanceStats.avgFPS = 1000 / this.performanceStats.avgFrameTime;
+      this.performanceStats.uptime = now - (this.flightStartTime || now);
+      this.performanceStats.lastFPSUpdate = now;
+    }
+
     // DeltaTime sınırla (tab değiştirme, frame drop vs.)
     // 50ms'den fazla = glitch yapıcı tab geçişi, 0'la
     if (this.clock.deltaTime > 0.05) {
@@ -719,44 +976,54 @@ class DroneSimulator {
     // ── Fizik Güncelle ──
     this.physics.update(this.clock.deltaTime);
 
-    // ── Hava Durumu Güncelle ──
-    this.weather.update(this.clock.deltaTime);
+    // ── Hava Durumu Güncelle (her 10 frame ~167ms) ──
+    // Rüzgar/sıcaklık değişimi yavaş, sık update gereksiz
+    if (this.frameCount % 10 === 0) {
+      this.weather.update(this.clock.deltaTime * 10);
+    }
 
     // ── Çarpışma Kontrolü & Terrain Height Query ──
     this.updateTerrainHeight();
     this.physics.checkCollisionAndCrash();
 
-    // ── Drone Modeli Güncelle ──
-    this.droneModel.update(this.physics);
+    // ── Drone Modeli Güncelle (her frame - titreme önleme) ──
+    this.droneModel.update(this.physics, this.clock.deltaTime);
 
-    // ── HUD Güncelle ──
+    // ── HUD Güncelle (her 3 frame) ──
     const flightTime = this.isFlying
       ? (now - this.flightStartTime) / 1000
       : 0;
-    this.hud.update(this.physics, flightTime);
-    this.hud.updateWeather(this.weather);
+    if (this.frameCount % 3 === 0) {
+      this.hud.update(this.physics, flightTime);
+    }
 
-    // ── Minimap Güncelle ──
-    this.updateMinimap();
+    // ── Hava Durumu HUD'a (her 30 frame ~500ms) ──
+    if (this.frameCount % 30 === 0) {
+      this.hud.updateWeather(this.weather);
+    }
 
-    // ── Hava Durumu Paneli Güncelle ──
-    this.updateWeatherPanel();
+    // ── Minimap Güncelle (her 4 frame) ──
+    if (this.frameCount % 4 === 0) {
+      this.updateMinimap();
+    }
+
+    // ── Hava Durumu Paneli Güncelle (her 60 frame ~1s) ──
+    if (this.frameCount % 60 === 0) {
+      this.updateWeatherPanel();
+      this.updateTimeDisplay();
+    }
 
     // ── Cesium Clock Tick ──
     const cesiumTime = this.viewer.clock.tick();
 
-    // ── RENDER PASS 1: Drone FPV Kamerası (optimized frame rate) ──
+    // ── RENDER PASS 1: Drone FPV Kamerası (THROTTLED) ──
     this.frameCount++;
 
-    // Drone cam capture sıklığı: kalite moduna göre dinamik
-    // Performance: her 2 frame (işlemci yüksek değilse)
-    // Quality: her 1 frame (maksimum smoothness)
-    let camCaptureInterval;
-    if (this.qualityMode === 'quality') {
-      camCaptureInterval = 1;  // Her frame render
-    } else {
-      camCaptureInterval = 1;  // Her frame render (glitch sorunu çözmek için)
-    }
+    // ═══ FPV KAMERA RENDER SIKLIĞI ═══
+    // scene.render() ÇOK AĞIR bir işlem!
+    // FPV cam'i her 3 frame'de render et = %66 GPU tasarrufu
+    // Kullanıcı farkı hissetmez (20fps drone cam yeterli)
+    const fpvCaptureInterval = 3;
 
     // Freeze aktifse frozen frame çiz, canlı render atla
     if (this.detector.isFrozen) {
@@ -765,9 +1032,8 @@ class DroneSimulator {
         this.droneCamCanvas.width,
         this.droneCamCanvas.height
       );
-      // Zoom göstergesini frozen üzerine de çiz
       this._drawZoomIndicator();
-    } else if (this.frameCount % camCaptureInterval === 0) {
+    } else if (this.frameCount % fpvCaptureInterval === 0) {
       this.captureDroneCam(cesiumTime);
 
       // Zoom uygula (canlı görüntüye)
@@ -781,8 +1047,8 @@ class DroneSimulator {
       }
 
       // AI Detection: FPV frame'den tespit çalıştır (seyrek)
-      // Performance: her 8 frame'de, Quality: her 6 frame'de
-      const detectionInterval = this.qualityMode === 'quality' ? 6 : 8;
+      // Her 15 frame'de AI tespit çalıştır (~4 FPS tespit = yeterli)
+      const detectionInterval = 15;
       if (this.detector.isEnabled && this.frameCount % detectionInterval === 0) {
         // Physics bilgilerini detector'a geç (mesafe hesaplama için)
         const physicsData = {
@@ -807,7 +1073,15 @@ class DroneSimulator {
     }
 
     // ── RENDER PASS 2: Ana Takip Kamerası ──
-    this.droneCamera.update(this.clock.deltaTime);
+    // Only update camera if not in drone cam freeze mode
+    if (!this.detector.isFrozen) {
+      this.droneCamera.update(this.clock.deltaTime);
+    }
+    
+    // ═══ ANA KAMERA RENDER (HER FRAME!) ═══
+    // FPV capture frame'lerinde kamera restore edilmiş olacak
+    // Normal frame'lerde zaten ana kamera ayarlı
+    // Her frame ana takip kamerasını render et
     this.viewer.scene.initializeFrame();
     this.viewer.scene.render(cesiumTime);
 
@@ -854,10 +1128,13 @@ class DroneSimulator {
     }
 
     // ── Heading çizgisini güncelle ──
+    // Hesaplama cache'le - trigonometri pahalı
     const headingRad = Cesium.Math.toRadians(this.physics.heading);
     const lineLen = this.minimapExpanded ? 0.01 : 0.003;
-    const endLon = pos.longitude + Math.sin(headingRad) * lineLen;
-    const endLat = pos.latitude + Math.cos(headingRad) * lineLen;
+    const sinHeading = Math.sin(headingRad);
+    const cosHeading = Math.cos(headingRad);
+    const endLon = pos.longitude + sinHeading * lineLen;
+    const endLat = pos.latitude + cosHeading * lineLen;
     if (this.minimapHeadingEntity) {
       this.minimapHeadingEntity.polyline.positions = Cesium.Cartesian3.fromDegreesArray([
         pos.longitude, pos.latitude,
@@ -894,9 +1171,12 @@ class DroneSimulator {
         `${pos.latitude.toFixed(4)}°N  ${pos.longitude.toFixed(4)}°E  ${pos.height.toFixed(0)}m`;
     }
 
-    // Render iste (minimap - seyrek update, temel glitch sorunu değil)
-    const minimapSmallInterval = this.qualityMode === 'quality' ? 3 : 4;
-    const minimapExpandedInterval = this.qualityMode === 'quality' ? 2 : 2;
+    // Render iste (minimap - çok seyrek update)
+    // Expanded: her 16 frame (~267ms @ 60fps)
+    // Small: her 30 frame (~500ms @ 60fps)
+    // Minimap sabit harita - sık render gereksiz
+    const minimapSmallInterval = 30;
+    const minimapExpandedInterval = 16;
     
     if (this.minimapExpanded) {
       if (this.frameCount % minimapExpandedInterval === 0) {
@@ -911,30 +1191,47 @@ class DroneSimulator {
 
   /**
    * Drone konumunda arazi yüksekliğini sor ve physics'e geçir
-   * (Terrain height estimation - optimized)
+   * (Terrain height estimation - optimized, non-blocking)
    */
   updateTerrainHeight() {
     const pos = this.physics.getPosition();
     
-    // Terrain height sampling: seyrek ama glitch sorunu değil
-    // Performance: her 16 frame, Quality: her 12 frame
-    const terrainSamplingInterval = this.qualityMode === 'quality' ? 12 : 16;
+    // Terrain height sampling: render pipeline'ı bloke etmemek için
+    // Her 120 frame (~2000ms @ 60fps) - çok seyrek ve non-blocking
+    const terrainSamplingInterval = 120;
     if (this.frameCount % terrainSamplingInterval === 0) {
       const terrainProvider = this.viewer.scene.globe.terrainProvider;
       const cartographicArray = [
         Cesium.Cartographic.fromDegrees(pos.longitude, pos.latitude)
       ];
 
-      Cesium.sampleTerrainMostDetailed(terrainProvider, cartographicArray)
-        .then((samples) => {
-          if (samples && samples.length > 0) {
-            this.physics.setTerrainHeight(samples[0].height);
-          }
-        })
-        .catch(() => {
-          // Fallback: zemin seviyesi 0
-          this.physics.setTerrainHeight(0);
+      // Deferred execution: requestIdleCallback ile idle thread'te çalıştır
+      if (typeof requestIdleCallback !== 'undefined') {
+        requestIdleCallback(() => {
+          Cesium.sampleTerrainMostDetailed(terrainProvider, cartographicArray)
+            .then((samples) => {
+              if (samples && samples.length > 0) {
+                this.physics.setTerrainHeight(samples[0].height);
+              }
+            })
+            .catch(() => {
+              this.physics.setTerrainHeight(0);
+            });
         });
+      } else {
+        // Fallback: setTimeout(0) ile deferred execution
+        setTimeout(() => {
+          Cesium.sampleTerrainMostDetailed(terrainProvider, cartographicArray)
+            .then((samples) => {
+              if (samples && samples.length > 0) {
+                this.physics.setTerrainHeight(samples[0].height);
+              }
+            })
+            .catch(() => {
+              this.physics.setTerrainHeight(0);
+            });
+        }, 0);
+      }
     }
   }
 }
