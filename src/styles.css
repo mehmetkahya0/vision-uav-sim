@@ -1160,6 +1160,41 @@ html, body {
   50% { box-shadow: 0 0 16px rgba(0, 255, 0, 0.8); }
 }
 
+/* ═══ Sound Badge (Drone Cam Overlay) ═══ */
+.sound-badge {
+  position: absolute;
+  top: 8px;
+  right: 50px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 16px;
+  z-index: 200;
+  cursor: pointer;
+  pointer-events: all;
+  background: rgba(0, 212, 255, 0.15);
+  border: 1px solid rgba(0, 212, 255, 0.5);
+  transition: all 0.3s ease;
+  animation: sound-badge-pulse 3s ease-in-out infinite;
+}
+
+.sound-badge:hover {
+  background: rgba(0, 212, 255, 0.3);
+  border-color: rgba(0, 212, 255, 0.8);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.5);
+}
+
+.sound-badge.sound-muted {
+  background: rgba(100, 100, 100, 0.25);
+  border: 1px solid rgba(100, 100, 100, 0.4);
+  filter: grayscale(1);
+  animation: none;
+}
+
+@keyframes sound-badge-pulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(0, 212, 255, 0.2); }
+  50% { box-shadow: 0 0 10px rgba(0, 212, 255, 0.4); }
+}
+
 /* Detection panel rows */
 .det-row {
   display: flex;

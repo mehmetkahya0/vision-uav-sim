@@ -71,7 +71,7 @@ export class WeatherSystem {
       },
       'snow': {
         windSpeed: 12, windHeading: 315, visibility: 3000,
-        precipitation: 'snow', cloudCover: 0.85, temperature: -2,
+        precipitation: 'snow', cloudCover: 0.85, temperature: -10,
       }
     };
 

@@ -166,6 +166,19 @@ export class DroneControls {
         }
       }
 
+      // Ses Aç/Kapat (P tuşu)
+      if (e.code === 'KeyP') {
+        if (window.sim && window.sim.audioManager) {
+          const muted = window.sim.audioManager.toggleMute();
+          // HUD badge güncelle
+          const badge = document.getElementById('soundBadge');
+          if (badge) {
+            badge.textContent = muted ? '🔇' : '🔊';
+            badge.classList.toggle('sound-muted', muted);
+          }
+        }
+      }
+
       // Yardım paneli
       if (e.code === 'Slash' && e.shiftKey) {
         this.toggleHelp();

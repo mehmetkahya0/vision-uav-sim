@@ -20,6 +20,7 @@ import { DroneModel } from './droneModel.js';
 import { ObjectDetector } from './objectDetection.js';
 import { WeatherSystem } from './weather.js';
 import { AIVisionManager } from './aiVisionManager.js';
+import { AudioManager } from './soundEngine.js';
 
 // ── Cesium Ion Token ──
 Cesium.Ion.defaultAccessToken =
@@ -316,6 +317,11 @@ class DroneSimulator {
 
     // Hava Durumu Sistemi
     this.weather = new WeatherSystem(this.viewer, this.physics);
+
+    // Ses Yöneticisi (Gerçek ses dosyaları + Web Audio API)
+    this.audioManager = new AudioManager();
+    // Tarayıcı autoplay politikası: ilk tuşa basınca ses başlat
+    window.addEventListener('keydown', () => this.audioManager.init(), { once: true });
 
     // Zaman Kontrol Paneli
     this.setupTimeControlPanel();
@@ -1146,6 +1152,11 @@ class DroneSimulator {
 
     // ── Fizik Güncelle ──
     this.physics.update(this.clock.deltaTime);
+
+    // ── Ses Yöneticisi Güncelle ──
+    if (this.audioManager) {
+      this.audioManager.update(this.clock.deltaTime, this.physics.getFlightData());
+    }
 
     // ── Hava Durumu Güncelle (her 10 frame ~167ms) ──
     // Rüzgar/sıcaklık değişimi yavaş, sık update gereksiz
