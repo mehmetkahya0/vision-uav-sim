@@ -46,6 +46,55 @@ export class HUD {
     // Throttle bar
     this.throttleBar = document.getElementById('throttleBarFill');
 
+    // FIX-O5: Ground status element'i constructor'da oluştur (render loop'ta değil)
+    this.groundStatusEl = document.getElementById('groundStatus');
+    if (!this.groundStatusEl) {
+      this.groundStatusEl = document.createElement('div');
+      this.groundStatusEl.id = 'groundStatus';
+      this.groundStatusEl.style.cssText = `
+        position: fixed; bottom: 120px; left: 20px;
+        padding: 8px 16px; border-radius: 8px;
+        font-family: 'Orbitron', monospace; font-size: 14px;
+        font-weight: bold; text-transform: uppercase;
+        z-index: 1000; transition: all 0.3s ease; display: none;
+      `;
+      document.body.appendChild(this.groundStatusEl);
+    }
+
+    // Drag chute status element
+    this.dragChuteStatusEl = document.getElementById('dragChuteStatus');
+    if (!this.dragChuteStatusEl) {
+      this.dragChuteStatusEl = document.createElement('div');
+      this.dragChuteStatusEl.id = 'dragChuteStatus';
+      this.dragChuteStatusEl.style.cssText = `
+        position: fixed; bottom: 160px; left: 20px;
+        padding: 6px 14px; border-radius: 8px;
+        font-family: 'Orbitron', monospace; font-size: 13px;
+        font-weight: bold; text-transform: uppercase;
+        z-index: 1000; transition: all 0.3s ease; display: none;
+      `;
+      document.body.appendChild(this.dragChuteStatusEl);
+    }
+
+    // Landing gear status element
+    this.gearStatusEl = document.getElementById('gearStatus');
+    if (!this.gearStatusEl) {
+      this.gearStatusEl = document.createElement('div');
+      this.gearStatusEl.id = 'gearStatus';
+      this.gearStatusEl.style.cssText = `
+        position: fixed; bottom: 200px; left: 20px;
+        padding: 6px 14px; border-radius: 8px;
+        font-family: 'Orbitron', monospace; font-size: 13px;
+        font-weight: bold; text-transform: uppercase;
+        z-index: 1000; transition: all 0.3s ease; display: none;
+      `;
+      document.body.appendChild(this.gearStatusEl);
+    }
+
+    // ── Gear state tracking ──
+    this._lastGearState = 'down';
+    this._gearChangeTime = 0;
+
     // ── Optimizasyon: Cached values ──
     this.cachedAltitude = null;
     this.cachedSpeed = null;
@@ -263,32 +312,17 @@ export class HUD {
     // YER DURUMU GÖSTERGESİ
     // ════════════════════════════════════════
     this.updateGroundStatus(physics, fd);
+    this.updateDragChuteStatus(fd);
+    this.updateGearStatus(fd);
   }
 
   /**
    * Yer durumu göstergesini güncelle
    */
   updateGroundStatus(physics, fd) {
-    // Ground status element'i bul veya oluştur
-    let groundStatus = document.getElementById('groundStatus');
-    if (!groundStatus) {
-      groundStatus = document.createElement('div');
-      groundStatus.id = 'groundStatus';
-      groundStatus.style.cssText = `
-        position: fixed;
-        bottom: 120px;
-        left: 20px;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-family: 'Orbitron', monospace;
-        font-size: 14px;
-        font-weight: bold;
-        text-transform: uppercase;
-        z-index: 1000;
-        transition: all 0.3s ease;
-      `;
-      document.body.appendChild(groundStatus);
-    }
+    // FIX-O5: Constructor'da oluşturulan element'i kullan
+    const groundStatus = this.groundStatusEl;
+    if (!groundStatus) return;
 
     if (physics.isGrounded) {
       groundStatus.style.display = 'block';
@@ -338,6 +372,101 @@ export class HUD {
     const dirs = ['K', 'KD', 'D', 'GD', 'G', 'GB', 'B', 'KB'];
     const index = Math.round(heading / 45) % 8;
     return dirs[index];
+  }
+
+  /**
+   * Fren paraşütü durumunu güncelle
+   */
+  updateDragChuteStatus(fd) {
+    const el = this.dragChuteStatusEl;
+    if (!el) return;
+
+    if (fd.dragChuteDeployed || fd.dragChuteProgress > 0) {
+      el.style.display = 'block';
+      const pct = (fd.dragChuteProgress * 100).toFixed(0);
+      if (fd.dragChuteDeployed) {
+        el.textContent = `🪂 CHUTE DEPLOYED (${pct}%)`;
+        el.style.background = 'rgba(255, 80, 0, 0.85)';
+        el.style.color = '#fff';
+        el.style.borderLeft = '4px solid #ff3300';
+        // Yanıp sönen animasyon
+        el.style.animation = 'pulse 0.8s ease-in-out infinite';
+      } else {
+        el.textContent = `🪂 CHUTE RETRACTING (${pct}%)`;
+        el.style.background = 'rgba(100, 100, 100, 0.7)';
+        el.style.color = '#ccc';
+        el.style.borderLeft = '4px solid #666';
+        el.style.animation = 'none';
+      }
+    } else {
+      el.style.display = 'none';
+      el.style.animation = 'none';
+    }
+  }
+
+  /**
+   * İniş takımı durumunu güncelle
+   * - Geçiş anında (deploying/retracting): her zaman göster
+   * - Gear UP ve AGL < 100m: uyarı olarak göster
+   * - Gear DOWN kararlı: 2.5s sonra otomatik gizle
+   */
+  updateGearStatus(fd) {
+    const el = this.gearStatusEl;
+    if (!el) return;
+
+    const progress = fd.gearDeployProgress;
+    const gear = fd.landingGear;
+
+    // Durum değişikliği tespiti
+    const currentGearState = gear ? (progress < 1 ? 'extending' : 'down') 
+                                  : (progress > 0 ? 'retracting' : 'up');
+    if (this._lastGearState !== currentGearState) {
+      this._lastGearState = currentGearState;
+      this._gearChangeTime = performance.now();
+    }
+
+    const elapsed = performance.now() - (this._gearChangeTime || 0);
+
+    if (progress > 0.01 && progress < 0.99) {
+      // Geçiş animasyonu - her zaman göster
+      el.style.display = 'block';
+      const pct = (progress * 100).toFixed(0);
+      el.textContent = gear ? `✈️ GEAR: EXTENDING ${pct}%` : `✈️ GEAR: RETRACTING ${pct}%`;
+      el.style.background = 'rgba(255, 170, 0, 0.85)';
+      el.style.color = '#000';
+      el.style.borderLeft = '4px solid #ffaa00';
+    } else if (!gear) {
+      // Gear UP - alçakta ise uyarı olarak göster
+      el.style.display = 'block';
+      if (fd.heightAboveTerrain < 100) {
+        el.textContent = '⚠️ GEAR: UP — DANGER!';
+        el.style.background = 'rgba(220, 30, 30, 0.9)';
+        el.style.color = '#fff';
+        el.style.borderLeft = '4px solid #ff2222';
+        el.style.animation = 'blink 0.6s ease-in-out infinite';
+      } else {
+        el.textContent = '✈️ GEAR: UP';
+        el.style.background = 'rgba(0, 100, 200, 0.75)';
+        el.style.color = '#fff';
+        el.style.borderLeft = '4px solid #0088ff';
+        el.style.animation = 'none';
+      }
+    } else {
+      // Gear DOWN kararlı
+      if (elapsed < 2500) {
+        // Son değişimden 2.5s boyunca göster
+        el.style.display = 'block';
+        el.textContent = '✈️ GEAR: DOWN ✓';
+        el.style.background = 'rgba(0, 150, 0, 0.75)';
+        el.style.color = '#fff';
+        el.style.borderLeft = '4px solid #00cc44';
+        el.style.animation = 'none';
+      } else {
+        // Süresi doldu - gizle
+        el.style.display = 'none';
+        el.style.animation = 'none';
+      }
+    }
   }
 
   /**

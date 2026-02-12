@@ -14,6 +14,8 @@
  *   E         → Yaw Right   (rudder sağ)
  *   Left Shift→ Throttle Up (motor gücü artır)
  *   Left Ctrl → Throttle Dn (motor gücü azalt)
+ *   Space     → Fren Paraşütü (Drag Chute) aç/kapat
+ *   X         → İniş Takımı aç/kapat
  *
  * Kamera Kontrolleri:
  * ──────────────────
@@ -179,6 +181,24 @@ export class DroneControls {
         }
       }
 
+      // Fren Paraşütü Aç/Kapat (Space tuşu)
+      if (e.code === 'Space') {
+        if (this.physics) {
+          const result = this.physics.toggleDragChute();
+          this._showNotification(result.deployed ? '🪂 PARAŞÜT AÇIK' : '🪂 PARAŞÜT KAPALI', 
+            result.deployed ? '#ff6600' : '#00aa44', result.reason);
+        }
+      }
+
+      // İniş Takımı Aç/Kapat (X tuşu)
+      if (e.code === 'KeyX') {
+        if (this.physics) {
+          const result = this.physics.toggleLandingGear();
+          this._showNotification(result.gear ? '✈️ GEAR DOWN' : '✈️ GEAR UP',
+            result.gear ? '#00aa44' : '#ffaa00', result.reason);
+        }
+      }
+
       // Yardım paneli
       if (e.code === 'Slash' && e.shiftKey) {
         this.toggleHelp();
@@ -229,15 +249,16 @@ export class DroneControls {
       }, { passive: false });
     }
 
-    // Sürekli girdi döngüsünü başlat
-    this._inputLoop();
+    // BUG-03 FIX: Girdi döngüsü artık ana animate() loop'undan çağrılıyor
+    // this._inputLoop(); → kaldırıldı, processInput() dışarıdan çağrılacak
   }
 
   /**
-   * Her frame'de çağrılır.
+   * BUG-03 FIX: Her frame'de ana animate() loop'undan çağrılır.
    * Basılı tuşları okuyarak fizik motoruna kontrol girdisi uygular.
+   * Artık kendi RAF döngüsü yok — fizikle senkronize çalışır.
    */
-  _inputLoop() {
+  processInput() {
     let pitch = 0;
     let roll = 0;
     let yaw = 0;
@@ -280,8 +301,6 @@ export class DroneControls {
     // Fizik motoruna girdileri uygula
     // setInput() fonksiyonu deadzone ve exponential curve uygular
     this.physics.setInput(pitch, roll, yaw, throttle);
-
-    requestAnimationFrame(() => this._inputLoop());
   }
 
   /**
@@ -312,5 +331,37 @@ export class DroneControls {
     if (panel) {
       panel.classList.toggle('hidden');
     }
+  }
+
+  /**
+   * Kısa bildirim göster (drag chute, gear vb.)
+   */
+  _showNotification(title, color, detail) {
+    // Mevcut bildirimi kaldır
+    const existing = document.querySelector('.controls-notification');
+    if (existing) existing.remove();
+
+    const badge = document.createElement('div');
+    badge.className = 'controls-notification';
+    badge.innerHTML = `<strong>${title}</strong>${detail ? `<br><small>${detail}</small>` : ''}`;
+    badge.style.cssText = `
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 20, 40, 0.92);
+      border: 2px solid ${color};
+      color: ${color};
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-family: 'Orbitron', 'Consolas', monospace;
+      font-size: 16px;
+      text-align: center;
+      z-index: 9999;
+      pointer-events: none;
+      text-shadow: 0 0 10px ${color};
+      box-shadow: 0 0 20px ${color}44;
+      animation: fadeOut 1.8s forwards;
+    `;
+    document.body.appendChild(badge);
+    setTimeout(() => badge.remove(), 1800);
   }
 }

@@ -169,6 +169,17 @@ export class DronePhysics {
       // ═══ YER ETKİSİ (GROUND EFFECT) ═══
       groundEffectHeight: 14.8,  // m (kanat açıklığı - yer etkisi mesafesi)
       groundEffectMultiplier: 1.1, // Yer etkisinde lift artışı (%10)
+
+      // ═══ FREN PARAŞÜTÜ (DRAG CHUTE) ═══
+      dragChuteMultiplier: 3.0,    // Paraşüt açıkken CD %300 artış
+      dragChuteDeploySpeed: 0.8,   // Paraşüt açılma hızı (0-1 arası, 1/s)
+      dragChuteMinSpeed: 2.0,      // Paraşüt bu hızın altında otomatik kapanır (m/s)
+      dragChuteMaxAltitude: 15,    // Paraşüt açılabilecek max AGL (m)
+      dragChuteArea: 8.0,          // m² (paraşüt sürükleme alanı)
+
+      // ═══ İNİŞ TAKIMLARI (LANDING GEAR) ═══
+      gearDeployTime: 2.0,         // İniş takımı açılma süresi (saniye)
+      noseGearMaxPitch: -8,        // Burun takımı kırılma pitch eşiği (derece)
     };
 
     // ═════════════════════════════════════════
@@ -199,7 +210,7 @@ export class DronePhysics {
     // RÜZGAR SİSTEMİ (WIND)
     // ═════════════════════════════════════════
     this.windVector = { x: 0, y: 0, speed: 0 }; // Rüzgar (body frame)
-    this.trueAirspeed = 0;                      // TAS (airspeed + rüzgar etkisi)
+    this.trueAirspeed = 35;                     // TAS (airspeed + rüzgar etkisi) — FIX: 0 değil cruise hızı
 
     // ═════════════════════════════════════════
     // ÇARPIŞMA & KAZA SİSTEMİ (COLLISION)
@@ -219,7 +230,15 @@ export class DronePhysics {
     this.groundContactTime = 0;        // Yer teması süresi
     this.isTaxiing = false;            // Yerde hareket halinde mi?
     this.landingGear = true;           // İniş takımları açık mı?
+    this.gearDeployProgress = 1.0;     // 0=kapalı, 1=tam açık
     this.crashReason = '';             // Kaza nedeni
+
+    // ═════════════════════════════════════════
+    // FREN PARAŞÜTÜ (DRAG CHUTE)
+    // ═════════════════════════════════════════
+    this.dragChuteDeployed = false;    // Paraşüt açık mı?
+    this.dragChuteProgress = 0;        // Açılma ilerlemesi (0-1)
+    this.dragChuteRequested = false;   // Kullanıcı açmak istiyor mu?
 
     // ═════════════════════════════════════════
     // İSTATİSTİKLER
@@ -260,17 +279,21 @@ export class DronePhysics {
   // ═══════════════════════════════════════════
   setWind(windVector) {
     /**
-     * Rüzgar vektörünü ayarla
+     * BUG-06 FIX: Rüzgar vektörünü ayarla
      * windVector = { x, y, speed }
-     * x = body-frame X (forward), y = body-frame Y (right)
+     * x = world-frame East, y = world-frame North (weather.js'den)
+     * 
+     * Drone heading'e göre body-frame'e dönüştür:
+     * forward = x·sin(heading) + y·cos(heading)
+     * right   = x·cos(heading) - y·sin(heading)
      */
     if (windVector) {
       this.windVector = { ...windVector };
-      // True airspeed = ground speed ± wind effect
-      this.trueAirspeed = Math.sqrt(
-        Math.pow(this.airspeed - windVector.x, 2) + 
-        Math.pow(windVector.y, 2)
-      );
+      // World-frame → Body-frame dönüşümü
+      const headingRad = Cesium.Math.toRadians(this.heading);
+      const windForward = windVector.x * Math.sin(headingRad) + windVector.y * Math.cos(headingRad);
+      // True airspeed = ground speed - headwind component
+      this.trueAirspeed = Math.max(0.1, this.airspeed - windForward);
     }
   }
   update(dt) {
@@ -295,12 +318,50 @@ export class DronePhysics {
     this.isTaxiing = this.isGrounded && this.airspeed > 0.5;
 
     // ══════════════════════════════════════════
+    // FREN PARAŞÜTÜ GÜNCELLEMESİ
+    // ══════════════════════════════════════════
+    if (this.dragChuteRequested && !this.dragChuteDeployed) {
+      // Paraşüt açılma koşulları: yerde veya alçak irtifada
+      if (this.isGrounded || this.heightAboveTerrain < cfg.dragChuteMaxAltitude) {
+        this.dragChuteDeployed = true;
+        console.log('🪂 Fren paraşütü AÇILDI!');
+      }
+    }
+    // Paraşüt açılma/kapanma animasyonu
+    if (this.dragChuteDeployed) {
+      this.dragChuteProgress = Math.min(1, this.dragChuteProgress + cfg.dragChuteDeploySpeed * dt);
+      // Hız çok düştüyse paraşütü otomatik kapat
+      if (this.airspeed < cfg.dragChuteMinSpeed) {
+        this.dragChuteDeployed = false;
+        this.dragChuteRequested = false;
+        this.dragChuteProgress = 0;
+        console.log('🪂 Fren paraşütü KAPANDI (hız düştü)');
+      }
+    } else {
+      this.dragChuteProgress = Math.max(0, this.dragChuteProgress - cfg.dragChuteDeploySpeed * 2 * dt);
+    }
+
+    // İniş takımı açılma/kapanma animasyonu
+    if (this.landingGear) {
+      this.gearDeployProgress = Math.min(1, this.gearDeployProgress + dt / cfg.gearDeployTime);
+    } else {
+      this.gearDeployProgress = Math.max(0, this.gearDeployProgress - dt / cfg.gearDeployTime);
+    }
+
+    // ══════════════════════════════════════════
     // İNİŞ ANI TESPİTİ VE CRASH KONTROLÜ
     // Havadan yere geçiş anında kontroller
     // ══════════════════════════════════════════
     if (this.isGrounded && !previousGrounded) {
       // Az önce yere temas ettik - iniş anı!
       this.groundContactTime = 0;
+
+      // ── İniş Takımı Kontrolü ──
+      // İniş takımları kapalıysa veya tam açılmamışsa = CRASH
+      if (!this.landingGear || this.gearDeployProgress < 0.9) {
+        this.crash(`İniş takımları ${!this.landingGear ? 'KAPALI' : 'tam açılmamış'}! Gövde üzerine iniş!`);
+        return;
+      }
       
       // ── Dikey Hız Kontrolü ──
       // Çok hızlı iniş = CRASH
@@ -320,8 +381,8 @@ export class DronePhysics {
       }
       
       // ── Pitch Kontrolü (Burun/Kuyruk Çarpması) ──
-      if (this.pitch < -10) {
-        this.crash(`Burun yere çarptı! Pitch: ${this.pitch.toFixed(1)}°`);
+      if (this.pitch < cfg.noseGearMaxPitch) {
+        this.crash(`Burun üzerine sert çakıldı! Pitch: ${this.pitch.toFixed(1)}° (limit: ${cfg.noseGearMaxPitch}°)`);
         return;
       }
       if (this.pitch > 20 && this.airspeed < cfg.vRotation) {
@@ -362,7 +423,18 @@ export class DronePhysics {
     // ────────────────────────────────────────────
     // ADIM 3: AERODİNAMİK KUVVETLER
     // ────────────────────────────────────────────
-    const V = Math.max(this.airspeed, 0.5); // Sıfıra bölmeyi önle
+    // ── FIX-K1: Rüzgar Etkisi → True Airspeed (TAS) ──
+    // Aerodinamik kuvvetler hava kütlesine göreceli hıza (TAS) bağlıdır.
+    // Karşı rüzgar → TAS artar → daha fazla lift/drag; kuyruk rüzgarı → TAS düşer
+    if (this.windVector && this.windVector.speed > 0) {
+      const headingRadWind = Cesium.Math.toRadians(this.heading);
+      const windFwd = this.windVector.x * Math.sin(headingRadWind)
+                    + this.windVector.y * Math.cos(headingRadWind);
+      this.trueAirspeed = Math.max(0.5, this.airspeed - windFwd);
+    } else {
+      this.trueAirspeed = Math.max(0.5, this.airspeed);
+    }
+    const V = this.trueAirspeed; // Tüm aero hesaplar TAS kullanır
 
     // ── Dinamik Basınç (q) ──
     // q = ½ρV²  (Pascal)
@@ -439,7 +511,20 @@ export class DronePhysics {
     // K·C_L²: indüklenmiş sürüklenme (kanat ucu vorteksleri)
     // ══════════════════════════════════════════
     let CD = cfg.CD0 + cfg.K * CL * CL;
-    let dragForce = q_dyn * cfg.wingArea * CD;
+
+    // ══ FREN PARAŞÜTÜ SÜRÜKLEME KUVVETİ ══
+    // Paraşüt açıkken toplam CD'yi %300 artır
+    // F_drag = ½ ρ v² A C_d
+    let dragChuteForce = 0;
+    if (this.dragChuteDeployed && this.dragChuteProgress > 0) {
+      // Paraşütün kendi sürükleme alanı ve katsayısı
+      const chuteCD = cfg.CD0 * cfg.dragChuteMultiplier * this.dragChuteProgress;
+      CD += chuteCD;
+      // Ek olarak paraşüt alanından gelen kuvvet
+      dragChuteForce = q_dyn * cfg.dragChuteArea * 1.2 * this.dragChuteProgress;
+    }
+
+    let dragForce = q_dyn * cfg.wingArea * CD + dragChuteForce;
     
     // Turbo modunda drag'\u0131 neredeyse tamamen yok et
     if (this.turboMode) {
@@ -583,9 +668,24 @@ export class DronePhysics {
       this.q -= (this.pitch - trimPitch) * cfg.pitchStability * dt;
     }
 
-    // ── Oryantasyonu Güncelle (Euler Integration) ──
-    this.roll += this.p * dt;
-    this.pitch += this.q * dt;
+    // ── FIX-K3: Oryantasyonu Güncelle (Body-rate → Euler Kinematics) ──
+    // Doğru dönüşüm: φ̇ = p + (q·sinφ + r·cosφ)·tanθ
+    //                 θ̇ = q·cosφ - r·sinφ
+    // |θ| > 50° → gimbal lock koruması: basit integrasyona geri dön
+    const absPitchDeg = Math.abs(this.pitch);
+    if (absPitchDeg < 50) {
+      const _phiRad = Cesium.Math.toRadians(this.roll);
+      const _thetaRad = Cesium.Math.toRadians(this.pitch);
+      const _sinPhi = Math.sin(_phiRad);
+      const _cosPhi = Math.cos(_phiRad);
+      const _tanTheta = Math.tan(_thetaRad);
+      this.roll  += (this.p + (this.q * _sinPhi + this.r * _cosPhi) * _tanTheta) * dt;
+      this.pitch += (this.q * _cosPhi - this.r * _sinPhi) * dt;
+    } else {
+      // Gimbal-lock güvenli bölge — basit Euler
+      this.roll  += this.p * dt;
+      this.pitch += this.q * dt;
+    }
 
     // ══════════════════════════════════════════
     // KOORDİNELİ DÖNÜŞ (COORDINATED TURN)
@@ -857,6 +957,12 @@ export class DronePhysics {
       isTaxiing: this.isTaxiing,
       isCrashed: this.isCrashed,
       crashReason: this.crashReason,
+      // Fren Paraşütü Verileri
+      dragChuteDeployed: this.dragChuteDeployed,
+      dragChuteProgress: this.dragChuteProgress,
+      // İniş Takımı Verileri
+      landingGear: this.landingGear,
+      gearDeployProgress: this.gearDeployProgress,
     };
   }
 
@@ -950,6 +1056,54 @@ export class DronePhysics {
       verticalSpeed: this.verticalSpeed,
       isTaxiing: this.isTaxiing,
       groundContactTime: this.groundContactTime,
+      dragChuteDeployed: this.dragChuteDeployed,
+      dragChuteProgress: this.dragChuteProgress,
+      landingGear: this.landingGear,
+      gearDeployProgress: this.gearDeployProgress,
     };
+  }
+
+  // ═════════════════════════════════════════
+  // FREN PARAŞÜTÜ KONTROLÜ
+  // ═════════════════════════════════════════
+
+  /**
+   * Fren paraşütünü aç/kapat (toggle)
+   * @returns {{ deployed: boolean, reason: string }}
+   */
+  toggleDragChute() {
+    if (this.dragChuteDeployed) {
+      // Paraşütü kapat (jettison)
+      this.dragChuteDeployed = false;
+      this.dragChuteRequested = false;
+      this.dragChuteProgress = 0;
+      return { deployed: false, reason: 'Paraşüt atıldı (jettison)' };
+    }
+    // Açma koşullarını kontrol et
+    if (!this.isGrounded && this.heightAboveTerrain > this.config.dragChuteMaxAltitude) {
+      return { deployed: false, reason: `İrtifa çok yüksek! (AGL: ${this.heightAboveTerrain.toFixed(0)}m, limit: ${this.config.dragChuteMaxAltitude}m)` };
+    }
+    this.dragChuteRequested = true;
+    this.dragChuteDeployed = true;
+    console.log('🪂 Fren paraşütü AÇILDI!');
+    return { deployed: true, reason: 'Paraşüt açıldı' };
+  }
+
+  // ═════════════════════════════════════════
+  // İNİŞ TAKIMI KONTROLÜ
+  // ═════════════════════════════════════════
+
+  /**
+   * İniş takımlarını aç/kapat
+   * @returns {{ gear: boolean, reason: string }}
+   */
+  toggleLandingGear() {
+    if (this.isGrounded && this.landingGear) {
+      // Yerdeyken takım kapatma izni yok
+      return { gear: true, reason: 'Yerdeyken iniş takımı kapatılamaz!' };
+    }
+    this.landingGear = !this.landingGear;
+    console.log(`✈️ İniş takımı: ${this.landingGear ? 'AÇIK' : 'KAPALI'}`);
+    return { gear: this.landingGear, reason: this.landingGear ? 'Takım açıldı' : 'Takım kapatıldı' };
   }
 }

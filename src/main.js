@@ -331,6 +331,8 @@ class DroneSimulator {
 
     // Frame sayacı (drone cam optimizasyonu)
     this.frameCount = 0;
+    // FIX-O1: Hava durumu delta-time biriktiricisi (FPS-bağımsız)
+    this.weatherDtAccumulator = 0;
 
     // ════════════════════════════════════════
     // SİMÜLASYONU BAŞLAT
@@ -896,10 +898,24 @@ class DroneSimulator {
     this.physics.pitch = 3;
     this.physics.roll = 0;
     
-    // Hız ve tırmanma değerlerini sıfırla
-    this.physics.airspeed = 0;
-    this.physics.throttle = 0;
+    // FIX-K2: Güvenli teleport — stall/crash önleme
+    // Cruise hızında teleport: airspeed=0 → anında stall → crash idi!
+    this.physics.airspeed = 35;  // Cruise hızında güvenli giriş (Vs=22 m/s)
+    this.physics.throttle = 65;  // %65 cruise gazı
     this.physics.climbRate = 0;
+    this.physics.flightPathAngle = 0;
+    this.physics.isStalling = false;
+    this.physics.stallIntensity = 0;
+    this.physics.isGrounded = false;
+    this.physics.p = 0; // Açısal hızları sıfırla
+    this.physics.q = 0;
+    this.physics.r = 0;
+    // Drag chute ve landing gear sıfırla
+    this.physics.dragChuteDeployed = false;
+    this.physics.dragChuteRequested = false;
+    this.physics.dragChuteProgress = 0;
+    this.physics.landingGear = true;
+    this.physics.gearDeployProgress = 1.0;
 
     // Trail'i temizle
     this.minimapTrailPositions = [];
@@ -1150,6 +1166,11 @@ class DroneSimulator {
       this.droneCamera.setMode(this.controls.cameraMode);
     }
 
+    // ── FIX-K4: Crash durumunda kontrol & fizik güncelleme atla ──
+    if (!this.physics.isCrashed) {
+      this.controls.processInput();
+    }
+
     // ── Fizik Güncelle ──
     this.physics.update(this.clock.deltaTime);
 
@@ -1158,10 +1179,12 @@ class DroneSimulator {
       this.audioManager.update(this.clock.deltaTime, this.physics.getFlightData());
     }
 
-    // ── Hava Durumu Güncelle (her 10 frame ~167ms) ──
-    // Rüzgar/sıcaklık değişimi yavaş, sık update gereksiz
+    // ── FIX-O1: Hava Durumu Güncelle (birikimli deltaTime) ──
+    // Eski: dt*10 yaklaşımdı, FPS dalgalanmalarında zaman kayması oluyordu
+    this.weatherDtAccumulator += this.clock.deltaTime;
     if (this.frameCount % 10 === 0) {
-      this.weather.update(this.clock.deltaTime * 10);
+      this.weather.update(this.weatherDtAccumulator);
+      this.weatherDtAccumulator = 0;
     }
 
     // ── Çarpışma Kontrolü & Terrain Height Query ──
@@ -1451,7 +1474,8 @@ class DroneSimulator {
     
     // Terrain height sampling: render pipeline'ı bloke etmemek için
     // Her 120 frame (~2000ms @ 60fps) - çok seyrek ve non-blocking
-    const terrainSamplingInterval = 120;
+    // FIX-O2: 120→30 frame (65 m/s'de 2sn=130m → 0.5sn=32m arazi hassasiyeti)
+    const terrainSamplingInterval = 30;
     if (this.frameCount % terrainSamplingInterval === 0) {
       const terrainProvider = this.viewer.scene.globe.terrainProvider;
       const cartographicArray = [

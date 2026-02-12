@@ -215,8 +215,12 @@ export class AudioManager {
     const throttle = Math.max(0, Math.min(1, (fd.throttle || 0) / 100));
     const eng = this._nodes.engine;
     if (eng) {
-      this._tgtRate = 0.35 + throttle * 1.85;
-      this._tgtEngVol = 0.06 + throttle * 0.49;
+      // FIX-O3: Logaritmik motor pitch — perceptually linear ses değişimi
+      // Düşük devirlerde daha hassas, yüksek devirlerde doygun
+      // log₂(1+t): t=0→0, t=0.25→0.32, t=0.5→0.58, t=1→1
+      const logThrottle = Math.log2(1 + throttle);
+      this._tgtRate = 0.35 + 1.85 * logThrottle;
+      this._tgtEngVol = 0.06 + 0.49 * logThrottle;
 
       this._curRate += (this._tgtRate - this._curRate) * lerp;
       this._curEngVol += (this._tgtEngVol - this._curEngVol) * lerp;

@@ -86,8 +86,8 @@ export class WeatherSystem {
     scene.light = new Cesium.SunLight();
     scene.lightSource = scene.light;
     
-    // Gölgeler etkinleştir (zaten aktif, kontrol için)
-    scene.shadows = true;
+    // BUG-11 FIX: Gölgeleri etkinleştirme — main.js performans için kapatıyor
+    // scene.shadows = true;
   }
 
   /**
@@ -187,10 +187,8 @@ export class WeatherSystem {
       viewer.scene.moon.show = true;
     }
 
-    // Fog yoğunluğu: Gün/gece durumuna göre
-    const fogAmount = this.weather.visibility < 5000 ? 0.0004 : 0.0001;
-    const nightFogMultiplier = sunIntensity < 0.1 ? 1.5 : 1.0;
-    viewer.scene.fog.density = fogAmount * nightFogMultiplier;
+    // BUG-01 FIX: Fog density artık sadece updateAtmosphere() tarafından yönetiliyor
+    // Burada sadece minimumBrightness ayarlıyoruz
     viewer.scene.fog.minimumBrightness = sunIntensity < 0.1 ? 0.01 : 0.03;
 
     // Globe aydınlanması - Gece'de aktif ama çok düşük
@@ -251,15 +249,17 @@ export class WeatherSystem {
     const viewer = this.viewer;
     const visibility = this.weather.visibility;
 
-    // Görünürlüğe göre fog density ayarla
+    // BUG-01 FIX: Tek fog density kaynağı — gece çarpanı dahil
     // visibility = 10000m → density = 0.0001
     // visibility = 1000m → density = 0.001
     const fogDensity = Math.max(0.00001, 0.1 / visibility);
-    viewer.scene.fog.density = fogDensity * (0.5 + this.weather.cloudCover);
+    const sunIntensity = this.calculateSunIntensity(this.gameTime.hour);
+    const nightFogMultiplier = sunIntensity < 0.1 ? 1.5 : 1.0;
+    viewer.scene.fog.density = fogDensity * (0.5 + this.weather.cloudCover) * nightFogMultiplier;
 
-    // Bulut örtüsüne göre shadow intensity
+    // BUG-02 FIX: Bulut örtüsü × güneş yoğunluğu birleşik light intensity
     const shadowIntensity = 1.0 - (this.weather.cloudCover * 0.3);
-    viewer.scene.light.intensity = Math.max(0.2, shadowIntensity);
+    viewer.scene.light.intensity = Math.max(0.2, shadowIntensity * Math.max(0.3, sunIntensity));
   }
 
   /**

@@ -1769,3 +1769,14 @@ html, body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
 }
+
+/* ═══ GENERIC PULSE ANIMATION (Drag Chute, Ground Status) ═══ */
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.02); }
+}
+
+/* ═══ CONTROLS NOTIFICATION ═══ */
+.controls-notification {
+  pointer-events: none;
+}

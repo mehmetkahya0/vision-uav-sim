@@ -185,6 +185,11 @@ export class ObjectDetector {
 
     // Animasyon durumu
     this._scanLineOffset = 0;
+    this._lastScanTime = performance.now(); // BUG-13 FIX: delta-time tabanlı animasyon
+
+    // BUG-08 FIX: Zoom için yeniden kullanılabilir canvas (GC baskısını önle)
+    this._zoomCanvas = document.createElement('canvas');
+    this._zoomCtx = this._zoomCanvas.getContext('2d');
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -301,18 +306,19 @@ export class ObjectDetector {
     const sx = (sourceCanvas.width - sw) / 2;
     const sy = (sourceCanvas.height - sh) / 2;
 
-    // Geçici canvas'a mevcut içeriği kopyala
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvasWidth;
-    tempCanvas.height = canvasHeight;
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.drawImage(sourceCanvas, 0, 0);
+    // BUG-08 FIX: Önceden oluşturulmuş canvas'ı yeniden kullan
+    if (this._zoomCanvas.width !== canvasWidth || this._zoomCanvas.height !== canvasHeight) {
+      this._zoomCanvas.width = canvasWidth;
+      this._zoomCanvas.height = canvasHeight;
+    }
+    this._zoomCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+    this._zoomCtx.drawImage(sourceCanvas, 0, 0);
 
     // Temizle ve zoom uygulanmış halini çiz
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(tempCanvas, sx, sy, sw, sh, 0, 0, canvasWidth, canvasHeight);
+    ctx.drawImage(this._zoomCanvas, sx, sy, sw, sh, 0, 0, canvasWidth, canvasHeight);
 
     return true;
   }
@@ -497,6 +503,8 @@ export class ObjectDetector {
    */
   _matchTrack(x1, y1, x2, y2, className) {
     let bestId = ++this._trackingId;
+    // BUG-07 FIX: Track ID taşmasını önle
+    if (this._trackingId > 100000) this._trackingId = 0;
     let bestIoU = 0.3; // min IoU eşiği
 
     for (const prev of this._smoothedDetections) {
@@ -569,8 +577,9 @@ export class ObjectDetector {
     const totalPitchDeg = dronePitchDeg + cameraPitchDeg;
     const totalPitchRad = (totalPitchDeg * Math.PI) / 180;
 
-    // Canvas'ın dikey FOV'u hesapla
-    const verticalFOVRad = (this.cameraFOV * Math.PI) / 180;
+    // FIX-O4: Zoom aktifken efektif FOV daralır → mesafe doğruluğu artar
+    const effectiveFOV = this.cameraFOV / (this._currentZoom || 1.0);
+    const verticalFOVRad = (effectiveFOV * Math.PI) / 180;
 
     // Bounding box merkezinin canvas içindeki normalize Y pozisyonu
     // 0 = en üst, 1 = en alt
@@ -641,8 +650,11 @@ export class ObjectDetector {
 
     ctx.save();
 
-    // Tarama çizgisi animasyonu
-    this._scanLineOffset = (this._scanLineOffset + 1.5) % canvasHeight;
+    // BUG-13 FIX: Delta-time tabanlı tarama çizgisi animasyonu
+    const nowScan = performance.now();
+    const dtScan = (nowScan - this._lastScanTime) / 1000;
+    this._lastScanTime = nowScan;
+    this._scanLineOffset = (this._scanLineOffset + 90 * dtScan) % canvasHeight;
 
     // Scan line (askeri radar efekti)
     const gradient = ctx.createLinearGradient(
@@ -916,11 +928,16 @@ export class ObjectDetector {
    * Kaynakları temizle
    */
   dispose() {
+    // BUG-05 FIX: TF.js GPU bellek sızıntısını önle
     if (this.model) {
+      if (typeof this.model.dispose === 'function') {
+        this.model.dispose();
+      }
       this.model = null;
     }
     this.isReady = false;
     this.isEnabled = false;
     this.detections = [];
+    this._smoothedDetections = [];
   }
 }
