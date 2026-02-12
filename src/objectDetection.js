@@ -11,8 +11,9 @@
  * Kısayol: B tuşu ile aç/kapat
  */
 
-// ── Türkçe Sınıf İsimleri (COCO-SSD çıktısı → Türkçe) ──
+// ── Tam Liste: Türkçe Sınıf İsimleri (COCO-SSD 80 Sınıf Tam Kapasite) ──
 const CLASS_NAME_TR = {
+  // Araçlar ve Ulaşım
   'person': 'İnsan',
   'bicycle': 'Bisiklet',
   'car': 'Araba',
@@ -22,11 +23,15 @@ const CLASS_NAME_TR = {
   'train': 'Tren',
   'truck': 'Kamyon',
   'boat': 'Tekne',
-  'traffic light': 'Trafik Lamba',
+  
+  // Sokak ve Dış Mekan
+  'traffic light': 'Trafik Lambası',
   'fire hydrant': 'Yangın Musluğu',
   'stop sign': 'Dur Tabelası',
   'parking meter': 'Parkmetre',
   'bench': 'Bank',
+  
+  // Hayvanlar
   'bird': 'Kuş',
   'cat': 'Kedi',
   'dog': 'Köpek',
@@ -37,11 +42,15 @@ const CLASS_NAME_TR = {
   'bear': 'Ayı',
   'zebra': 'Zebra',
   'giraffe': 'Zürafa',
+  
+  // Kişisel Eşyalar
   'backpack': 'Sırt Çantası',
   'umbrella': 'Şemsiye',
   'handbag': 'El Çantası',
   'tie': 'Kravat',
   'suitcase': 'Valiz',
+  
+  // Spor ve Hobi
   'frisbee': 'Frizbi',
   'skis': 'Kayak',
   'snowboard': 'Snowboard',
@@ -52,6 +61,8 @@ const CLASS_NAME_TR = {
   'skateboard': 'Kaykay',
   'surfboard': 'Sörf Tahtası',
   'tennis racket': 'Tenis Raketi',
+  
+  // Mutfak ve Ev Gereçleri
   'bottle': 'Şişe',
   'wine glass': 'Kadeh',
   'cup': 'Bardak',
@@ -59,6 +70,8 @@ const CLASS_NAME_TR = {
   'knife': 'Bıçak',
   'spoon': 'Kaşık',
   'bowl': 'Kase',
+  
+  // Yiyecekler
   'banana': 'Muz',
   'apple': 'Elma',
   'sandwich': 'Sandviç',
@@ -69,32 +82,39 @@ const CLASS_NAME_TR = {
   'pizza': 'Pizza',
   'donut': 'Donut',
   'cake': 'Pasta',
+  
+  // Mobilya ve İç Mekan
   'chair': 'Sandalye',
   'couch': 'Kanepe',
   'potted plant': 'Saksı Bitkisi',
   'bed': 'Yatak',
   'dining table': 'Masa',
   'toilet': 'Tuvalet',
-  'tv': 'TV',
-  'laptop': 'Laptop',
-  'mouse': 'Mouse',
+  
+  // Elektronik
+  'tv': 'Televizyon',
+  'laptop': 'Dizüstü Bilgisayar',
+  'mouse': 'Fare',
   'remote': 'Kumanda',
   'keyboard': 'Klavye',
   'cell phone': 'Telefon',
+  
+  // Beyaz Eşya
   'microwave': 'Mikrodalga',
   'oven': 'Fırın',
-  'toaster': 'Tost Makine',
+  'toaster': 'Tost Makinesi',
   'sink': 'Lavabo',
   'refrigerator': 'Buzdolabı',
+  
+  // Diğer Objeler
   'book': 'Kitap',
   'clock': 'Saat',
   'vase': 'Vazo',
   'scissors': 'Makas',
   'teddy bear': 'Oyuncak Ayı',
   'hair drier': 'Saç Kurutucu',
-  'toothbrush': 'Diş Fırçası',
+  'toothbrush': 'Diş Fırçası'
 };
-
 /**
  * Sınıf adından benzersiz renk üret
  */
