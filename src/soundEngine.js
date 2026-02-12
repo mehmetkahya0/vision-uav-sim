@@ -1,28 +1,58 @@
 /**
  * ═══════════════════════════════════════════════════════════════════
- * AudioManager — UAV Ses Yöneticisi (Optimized)
+ * AudioManager — UAV Ses Yöneticisi (v3 — Loop-Safe)
  * ═══════════════════════════════════════════════════════════════════
  *
- * Gerçek ses dosyalarıyla çalışan yüksek performanslı ses sistemi.
+ * Sorun: engine.wav gibi uzun kayıtlarda başlangıç "spool-up" sesi var.
+ * Loop yeniden başladığında o spool-up tekrar duyuluyor.
  *
- * Katmanlar:
- *   engine   → Motor/pervane sesi (loop) — throttle → playbackRate + gain
- *   wind     → Rüzgar sesi (loop) — airspeed → gain + playbackRate
- *   stall    → Stall uyarısı (loop) — isStalling true olduğunda
- *   altitude → Alçak irtifa uyarısı (loop) — AGL < 50m
- *   crash    → Çarpma sesi (one-shot) — crash anında tetiklenir
- *
- * Optimizasyonlar:
- *   - setTargetAtTime ile smooth parametre geçişleri (click/pop yok)
- *   - DynamicsCompressor ile clipping önleme
- *   - Büyük WAV dosyaları için async decode
- *   - Throttle smoothing ile Shift tuşu senkronizasyonu
- *   - Dead-zone altında gereksiz AudioParam güncellemesi atlanır
- *   - dronecrash CustomEvent dinleyicisi ile fizik motoruna doğrudan bağlantı
+ * Çözüm: loopStart / loopEnd ile yalnızca kararlı (steady-state)
+ * bölge loop ediliyor, başlangıç introsu atlanıyor.
  *
  * Dosyalar: /sounds/engine.wav, wind.mp3, crash.wav,
  *           stall-warning.mp3, altitude-warning.mp3
  */
+
+// ── Her ses katmanının loop konfigürasyonu ──
+// skipIntro : kaydın başındaki intro/spool-up atlanacak saniye
+// trimEnd   : kaydın sonundan kesilecek saniye (sessizlik / kapanma)
+const LAYER_CONFIG = {
+  engine: {
+    url: '/sounds/engine.wav',
+    skipIntro: 5.0,   // ilk 5 sn startup ses → loop'tan atla
+    trimEnd:   3.0,   // son 3 sn shutdown/fade → loop'tan atla
+    initGain:  0.06,
+    initRate:  0.35,
+  },
+  wind: {
+    url: '/sounds/wind.mp3',
+    skipIntro: 1.0,   // ilk 1 sn fade-in → atla
+    trimEnd:   1.0,   // son 1 sn fade-out → atla
+    initGain:  0.00,
+    initRate:  0.65,
+  },
+  stall: {
+    url: '/sounds/stall-warning.mp3',
+    skipIntro: 0,
+    trimEnd:   0,
+    initGain:  0.50,
+    initRate:  1.15,
+  },
+  altitude: {
+    url: '/sounds/altitude-warning.mp3',
+    skipIntro: 0,
+    trimEnd:   0,
+    initGain:  0.40,
+    initRate:  1.0,
+  },
+  crash: {
+    url: '/sounds/crash.wav',
+    skipIntro: 0,
+    trimEnd:   0,
+    initGain:  0.80,
+    initRate:  1.0,
+  },
+};
 
 export class AudioManager {
   constructor() {
@@ -32,10 +62,10 @@ export class AudioManager {
     this.muted = false;
     this.masterVolume = 0.65;
 
-    // Decode edilmiş AudioBuffer'lar
+    /** Decode edilmiş AudioBuffer'lar */
     this._buffers = {};
 
-    // Aktif {src: BufferSourceNode, gain: GainNode} çiftleri
+    /** Aktif {src, gain} çiftleri */
     this._nodes = {};
 
     // Durum bayrakları
@@ -44,63 +74,52 @@ export class AudioManager {
     this._stallActive = false;
     this._altActive = false;
 
-    // Throttle smooth interpolasyon (Shift senkron)
-    this._curRate = 0.35;   // anlık playbackRate
-    this._tgtRate = 0.35;   // hedef playbackRate
-    this._curEngVol = 0.06; // anlık motor gain
-    this._tgtEngVol = 0.06; // hedef motor gain
+    // Throttle smoothing
+    this._curRate = 0.35;
+    this._tgtRate = 0.35;
+    this._curEngVol = 0.06;
+    this._tgtEngVol = 0.06;
 
-    // Wind smooth
+    // Wind smoothing
     this._curWindVol = 0;
     this._curWindRate = 0.65;
   }
 
   /* ═══════════════════════════════════════════════════
-     SES DOSYASI YÜKLEME & DECODE
+     SES DOSYASI YÜKLEME
      ═══════════════════════════════════════════════════ */
 
-  /** Tek bir dosyayı fetch → decode et */
   async _load(name, url) {
     try {
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const ab = await res.arrayBuffer();
       this._buffers[name] = await this.ctx.decodeAudioData(ab);
-      console.log(`  ✓ ${name} (${(ab.byteLength / 1024).toFixed(0)} KB)`);
+      const dur = this._buffers[name].duration.toFixed(1);
+      console.log(`  ✓ ${name} (${(ab.byteLength / 1024).toFixed(0)} KB, ${dur}s)`);
     } catch (err) {
       console.warn(`  ✗ ${name}: ${err.message}`);
     }
   }
 
-  /** Tüm ses dosyalarını paralel yükle */
   async _loadAll() {
     console.log('🔊 Ses dosyaları yükleniyor…');
-    await Promise.all([
-      this._load('engine',   '/sounds/engine.wav'),
-      this._load('wind',     '/sounds/wind.mp3'),
-      this._load('crash',    '/sounds/crash.wav'),
-      this._load('stall',    '/sounds/stall-warning.mp3'),
-      this._load('altitude', '/sounds/altitude-warning.mp3'),
-    ]);
+    const jobs = Object.entries(LAYER_CONFIG).map(([name, cfg]) =>
+      this._load(name, cfg.url)
+    );
+    await Promise.all(jobs);
     console.log('🔊 Tüm sesler hazır');
   }
 
   /* ═══════════════════════════════════════════════════
-     AUDIO GRAPH — Node ağacı kurulumu
-     ═══════════════════════════════════════════════════
-
-     BufferSource ─┐
-                   ├─► [GainNode] ─► [Compressor] ─► [MasterGain] ─► destination
-     BufferSource ─┘
-  */
+     AUDIO GRAPH
+     ═══════════════════════════════════════════════════ */
 
   _buildGraph() {
-    // Master çıkış gain'i
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = this.masterVolume;
     this.masterGain.connect(this.ctx.destination);
 
-    // Compressor — tüm katmanlar buna bağlanır
     this.comp = this.ctx.createDynamicsCompressor();
     this.comp.threshold.value = -20;
     this.comp.knee.value = 10;
@@ -111,41 +130,52 @@ export class AudioManager {
   }
 
   /* ═══════════════════════════════════════════════════
-     LOOP SOURCE OLUŞTUR
-     ═══════════════════════════════════════════════════ */
+     LOOP SOURCE — loopStart / loopEnd ile intro-safe
+     ═══════════════════════════════════════════════════
 
-  /**
-   * Bir buffer'ı loop olarak çalmaya başla.
-   * @param {string} name — buffer adı
-   * @param {number} initGain — başlangıç gain (0–1)
-   * @param {number} initRate — başlangıç playbackRate
-   * @param {AudioNode} [dest] — bağlanacak hedef node (default: compressor)
-   */
-  _loop(name, initGain = 0, initRate = 1, dest = null) {
-    // Aynı isimde çalan varsa önce durdur
+     engine.wav:  [STARTUP 5s | ====STEADY STATE==== | SHUTDOWN 3s]
+                               ↑ loopStart           ↑ loopEnd
+     Playback her zaman loopStart'tan başlar.
+     Loop geri sardığında da loopStart'a döner.
+     Böylece startup sesi ASLA tekrarlanmaz.
+  */
+
+  _loop(name) {
     this._stop(name);
 
     const buf = this._buffers[name];
-    if (!buf) return;
+    const cfg = LAYER_CONFIG[name];
+    if (!buf || !cfg) return;
+
+    const duration = buf.duration;
+    const loopStart = Math.min(cfg.skipIntro, duration * 0.4);
+    const loopEnd = Math.max(loopStart + 0.5, duration - cfg.trimEnd);
 
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
-    src.playbackRate.value = initRate;
+    src.loopStart = loopStart;
+    src.loopEnd = loopEnd;
+    src.playbackRate.value = cfg.initRate;
 
     const gain = this.ctx.createGain();
-    gain.gain.value = initGain;
+    gain.gain.value = cfg.initGain;
 
     src.connect(gain);
-    gain.connect(dest || this.comp);
-    src.start(0);
+    gain.connect(this.comp);
+
+    // loopStart noktasından başlat — startup intro'yu atla
+    src.start(0, loopStart);
 
     this._nodes[name] = { src, gain };
+
+    if (cfg.skipIntro > 0) {
+      console.log(`  🔁 ${name}: loop ${loopStart.toFixed(1)}s – ${loopEnd.toFixed(1)}s (toplam ${duration.toFixed(1)}s)`);
+    }
   }
 
   /* ═══════════════════════════════════════════════════
-     INIT — İlk kullanıcı etkileşiminden sonra çağrılır
-     (Tarayıcı autoplay politikası)
+     INIT
      ═══════════════════════════════════════════════════ */
 
   async init() {
@@ -157,21 +187,19 @@ export class AudioManager {
     this._buildGraph();
     await this._loadAll();
 
-    // ── Sürekli loop'lar ──
-    this._loop('engine', 0.06, 0.35);   // idle hum
-    this._loop('wind',   0.00, 0.65);   // sessiz başlar
+    // Sürekli loop'lar
+    this._loop('engine');
+    this._loop('wind');
 
-    // ── Crash event dinle (fizik motoru dispatch eder) ──
-    window.addEventListener('dronecrash', () => this._onCrash(), { once: false });
+    // Crash event dinle
+    window.addEventListener('dronecrash', () => this._onCrash());
 
     this.ready = true;
     console.log('🔊 AudioManager aktif');
   }
 
   /* ═══════════════════════════════════════════════════
-     UPDATE — Her frame çağrılır
-     @param {number} dt — saniye cinsinden delta time
-     @param {object} fd — DronePhysics.getFlightData()
+     UPDATE — Her frame
      ═══════════════════════════════════════════════════ */
 
   update(dt, fd) {
@@ -179,101 +207,66 @@ export class AudioManager {
     if (this._crashed) return;
 
     const now = this.ctx.currentTime;
+    const lerp = 1 - Math.exp(-8 * dt);
 
-    // Smooth interpolasyon katsayısı (dt bağımlı, frame-rate independent)
-    const lerpSpeed = 1 - Math.exp(-8 * dt); // ~8 Hz cutoff
-
-    /* ─────────────────────────────────────────────
-       1) MOTOR SESİ
-       throttle % → playbackRate (perde) + gain (volume)
-
-       Mapping:
-         throttle  0%  → rate 0.35  gain 0.06   (rölanti)
-         throttle 50%  → rate 1.15  gain 0.30   (orta devir)
-         throttle 100% → rate 2.20  gain 0.55   (tam gaz)
-
-       Shift basılı → throttle artar → rate + gain artar
-       Shift bırakılı → throttle düşer → rate + gain düşer
-       Smooth lerp ani zıplamayı önler
-       ───────────────────────────────────────────── */
+    /* ── 1) MOTOR SESİ ──
+       throttle 0%  → rate 0.35  vol 0.06
+       throttle 100% → rate 2.20  vol 0.55  */
     const throttle = Math.max(0, Math.min(1, (fd.throttle || 0) / 100));
     const eng = this._nodes.engine;
-
     if (eng) {
-      // Hedef değerler
       this._tgtRate = 0.35 + throttle * 1.85;
       this._tgtEngVol = 0.06 + throttle * 0.49;
 
-      // Smooth lerp
-      this._curRate += (this._tgtRate - this._curRate) * lerpSpeed;
-      this._curEngVol += (this._tgtEngVol - this._curEngVol) * lerpSpeed;
+      this._curRate += (this._tgtRate - this._curRate) * lerp;
+      this._curEngVol += (this._tgtEngVol - this._curEngVol) * lerp;
 
-      // AudioParam güncelle (sadece anlamlı fark varsa CPU tasarrufu)
       eng.src.playbackRate.setTargetAtTime(this._curRate, now, 0.06);
       eng.gain.gain.setTargetAtTime(this._curEngVol, now, 0.06);
     }
 
-    /* ─────────────────────────────────────────────
-       2) RÜZGAR SESİ
-       airspeed (m/s) → gain (volume) + playbackRate (pitch)
-
-       Mapping:
-         0 m/s   → vol 0.00  rate 0.65  (sessiz)
-         35 m/s  → vol 0.20  rate 1.10  (cruise)
-         65 m/s  → vol 0.45  rate 1.70  (max speed)
-
-       ───────────────────────────────────────────── */
+    /* ── 2) RÜZGAR SESİ ──
+       0 m/s → vol 0.00, 65 m/s → vol 0.45  */
     const v = fd.airspeed || 0;
     const wnd = this._nodes.wind;
-
     if (wnd) {
       const tgtWVol = Math.min(0.45, v / 145);
       const tgtWRate = 0.65 + Math.min(v, 70) * 0.015;
 
-      this._curWindVol += (tgtWVol - this._curWindVol) * lerpSpeed;
-      this._curWindRate += (tgtWRate - this._curWindRate) * lerpSpeed;
+      this._curWindVol += (tgtWVol - this._curWindVol) * lerp;
+      this._curWindRate += (tgtWRate - this._curWindRate) * lerp;
 
       wnd.gain.gain.setTargetAtTime(this._curWindVol, now, 0.08);
       wnd.src.playbackRate.setTargetAtTime(this._curWindRate, now, 0.08);
     }
 
-    /* ─────────────────────────────────────────────
-       3) STALL UYARISI — isStalling flag
-       ───────────────────────────────────────────── */
+    /* ── 3) STALL UYARISI ── */
     if (fd.isStalling && !this._stallActive) {
       this._stallActive = true;
-      this._loop('stall', 0.50, 1.15);
+      this._loop('stall');
     } else if (!fd.isStalling && this._stallActive) {
       this._stallActive = false;
       this._stop('stall', 0.08);
     }
 
-    /* ─────────────────────────────────────────────
-       4) ALÇAK İRTİFA UYARISI — AGL < 50m
-       ───────────────────────────────────────────── */
+    /* ── 4) ALÇAK İRTİFA UYARISI ── */
     const hat = fd.heightAboveTerrain ?? 9999;
     const altWarn = hat < 50 && hat > 0 && !fd.isGrounded && !fd.isCrashed;
-
     if (altWarn && !this._altActive) {
       this._altActive = true;
-      this._loop('altitude', 0.40, 1.0);
+      this._loop('altitude');
     } else if (!altWarn && this._altActive) {
       this._altActive = false;
       this._stop('altitude', 0.08);
     }
 
-    /* ─────────────────────────────────────────────
-       5) CRASH TESPİTİ (flightData yedek)
-       ───────────────────────────────────────────── */
-    if (fd.isCrashed && !this._prevCrashed) {
-      this._onCrash();
-    }
+    /* ── 5) CRASH TESPİTİ (yedek) ── */
+    if (fd.isCrashed && !this._prevCrashed) this._onCrash();
     this._prevCrashed = fd.isCrashed || false;
   }
 
   /* ═══════════════════════════════════════════════════
-     CRASH HANDLER
-     Motor sesini durdur + crash sesi çal (one-shot)
+     CRASH — Motor dur + crash sesi çal (one-shot, loop yok)
      ═══════════════════════════════════════════════════ */
 
   _onCrash() {
@@ -283,7 +276,7 @@ export class AudioManager {
 
     const now = this.ctx.currentTime;
 
-    // ── Motor: hızla devir düşür + sessizleştir ──
+    // Motor devir düşür + sessizleştir
     const eng = this._nodes.engine;
     if (eng) {
       eng.gain.gain.cancelScheduledValues(now);
@@ -291,23 +284,22 @@ export class AudioManager {
       eng.src.playbackRate.setTargetAtTime(0.15, now, 0.4);
     }
 
-    // ── Rüzgar: kapat ──
+    // Rüzgar kapat
     const wnd = this._nodes.wind;
-    if (wnd) {
-      wnd.gain.gain.setTargetAtTime(0, now, 0.12);
-    }
+    if (wnd) wnd.gain.gain.setTargetAtTime(0, now, 0.12);
 
-    // ── Uyarıları kapat ──
+    // Uyarıları kapat
     this._stop('stall', 0.04);
     this._stop('altitude', 0.04);
     this._stallActive = false;
     this._altActive = false;
 
-    // ── Crash sesi (one-shot) ──
+    // Crash sesi — ONE-SHOT (loop = false)
     const buf = this._buffers.crash;
     if (buf) {
       const src = this.ctx.createBufferSource();
       src.buffer = buf;
+      src.loop = false; // TEK SEFER çal!
 
       const g = this.ctx.createGain();
       g.gain.value = 0.80;
@@ -317,25 +309,22 @@ export class AudioManager {
       src.start(now);
     }
 
-    console.log('💥 AudioManager: crash');
+    console.log('💥 crash');
   }
 
   /* ═══════════════════════════════════════════════════
-     STOP — Bir loop kaynağını fade-out ile durdur
-     @param {string} name
-     @param {number} [fadeTime=0.05] — fade süresi (saniye)
+     STOP — Fade-out ile source durdur
      ═══════════════════════════════════════════════════ */
 
   _stop(name, fadeTime = 0.05) {
     const n = this._nodes[name];
     if (!n) return;
-
     const now = this.ctx.currentTime;
     try {
       n.gain.gain.cancelScheduledValues(now);
       n.gain.gain.setTargetAtTime(0, now, fadeTime);
       n.src.stop(now + fadeTime * 4);
-    } catch (_) { /* zaten durmuş */ }
+    } catch (_) { /* */ }
     delete this._nodes[name];
   }
 
@@ -369,17 +358,15 @@ export class AudioManager {
     return this.muted;
   }
 
-  /** Crash sonrası yeni uçuş başlatıldığında çağır */
+  /** Crash sonrası reset */
   reset() {
     if (!this.ctx) return;
 
-    // Tüm aktif source'ları durdur
     for (const name of Object.keys(this._nodes)) {
       try { this._nodes[name].src.stop(); } catch (_) { /* */ }
     }
     this._nodes = {};
 
-    // Durumları sıfırla
     this._crashed = false;
     this._prevCrashed = false;
     this._stallActive = false;
@@ -391,9 +378,8 @@ export class AudioManager {
     this._curWindVol = 0;
     this._curWindRate = 0.65;
 
-    // Sürekli loop'ları yeniden başlat
-    this._loop('engine', 0.06, 0.35);
-    this._loop('wind', 0, 0.65);
+    this._loop('engine');
+    this._loop('wind');
   }
 
   dispose() {
