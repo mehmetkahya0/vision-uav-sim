@@ -6,7 +6,7 @@
  */
 import * as Cesium from 'cesium';
 
-const MODEL_URL = '/models/mq_1_predator_uav.glb';
+const MODEL_URL = `${import.meta.env.BASE_URL}models/mq_1_predator_uav.glb`;
 
 export class DroneModel {
   constructor(mainViewer) {

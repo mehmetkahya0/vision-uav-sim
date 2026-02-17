@@ -18,35 +18,35 @@
 // trimEnd   : kaydın sonundan kesilecek saniye (sessizlik / kapanma)
 const LAYER_CONFIG = {
   engine: {
-    url: '/sounds/engine.wav',
+    url: `${import.meta.env.BASE_URL}sounds/engine.wav`,
     skipIntro: 5.0,   // ilk 5 sn startup ses → loop'tan atla
     trimEnd:   3.0,   // son 3 sn shutdown/fade → loop'tan atla
     initGain:  0.06,
     initRate:  0.35,
   },
   wind: {
-    url: '/sounds/wind.mp3',
+    url: `${import.meta.env.BASE_URL}sounds/wind.mp3`,
     skipIntro: 1.0,   // ilk 1 sn fade-in → atla
     trimEnd:   1.0,   // son 1 sn fade-out → atla
     initGain:  0.00,
     initRate:  0.65,
   },
   stall: {
-    url: '/sounds/stall-warning.mp3',
+    url: `${import.meta.env.BASE_URL}sounds/stall-warning.mp3`,
     skipIntro: 0,
     trimEnd:   0,
     initGain:  0.50,
     initRate:  1.15,
   },
   altitude: {
-    url: '/sounds/altitude-warning.mp3',
+    url: `${import.meta.env.BASE_URL}sounds/altitude-warning.mp3`,
     skipIntro: 0,
     trimEnd:   0,
     initGain:  0.40,
     initRate:  1.0,
   },
   crash: {
-    url: '/sounds/crash.wav',
+    url: `${import.meta.env.BASE_URL}sounds/crash.wav`,
     skipIntro: 0,
     trimEnd:   0,
     initGain:  0.80,
