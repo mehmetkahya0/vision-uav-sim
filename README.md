@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/Platform-Web-red?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Platform"/>
 </p>
 
-<h1 align="center">🛩️ AI UAV SIMULATOR</h1>
+<h1 align="center">🛩️ VISION AI UAV SIMULATOR</h1>
 <h3 align="center"><em>High-Fidelity Fixed-Wing UAV Flight Dynamics & AI Vision Platform</em></h3>
 
 <p align="center">
@@ -44,7 +44,7 @@
 
 ## 📝 Abstract
 
-**AI UAV Simulator** is an open-source, web-based flight simulation platform that bridges the gap between toy drone simulators and professional-grade flight training environments. Built entirely in JavaScript and running in any modern browser, the simulator provides:
+**Vision AI UAV Simulator** is an open-source, web-based flight simulation platform that bridges the gap between toy drone simulators and professional-grade flight training environments. Built entirely in JavaScript and running in any modern browser, the simulator provides:
 
 1. **A high-fidelity aerodynamics engine** implementing real-world fixed-wing physics — including lift (`L = ½ρv²SC_L`), drag, stall mechanics, coordinated turns, ground effect, and G-force penalties.
 2. **An AI-powered computer vision pipeline** with five distinct models — object detection (COCO-SSD, 80+ categories), multi-object tracking, semantic segmentation, pose estimation, and optical flow analysis.
