@@ -20,24 +20,13 @@ export default defineConfig({
     chunkSizeWarningLimit: 5000,   // 5MB'a kadar uyarı yok
     rollupOptions: {
       output: {
-        // Manuel chunk splitting: Cesium'u tek büyük chunk'ta tut
-        manualChunks: {
-          cesium: ['cesium'],
-        },
         // Chunk dosya adları
         chunkFileNames: 'assets/[name]-[hash].js',
         entryFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]',
       },
     },
-    // Minify: terser ile daha agresif sıkıştırma
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: false,    // Console.log'ları tut (debug için)
-        passes: 2,              // 2 pass sıkıştırma
-      },
-    },
+    minify: 'esbuild',
   },
   optimizeDeps: {
     include: ['cesium'],
