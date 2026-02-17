@@ -9,6 +9,8 @@
 <h1 align="center">🛩️ VISION AI UAV SIMULATOR</h1>
 <h3 align="center"><em>High-Fidelity Fixed-Wing UAV Flight Dynamics & AI Vision Platform</em></h3>
 
+![Views Counter](https://views-counter.vercel.app/badge?pageId=https%3A%2F%2Fgithub%2Ecom%2Fmehmetkahya0%2Fvision-uav-sim&leftColor=000000&rightColor=0adb3f&type=total&label=VISITORS&style=none)
+
 <p align="center">
   A browser-based, photorealistic 3D unmanned aerial vehicle simulator featuring a physics-accurate flight dynamics engine modeled after the <strong>MQ-1 Predator</strong>, integrated <strong>real-time AI computer vision</strong> powered by TensorFlow.js, and a dynamic <strong>weather & day/night cycle</strong> system — all rendered on a full-scale <strong>CesiumJS</strong> globe with real-world terrain and 3D buildings.
 </p>
