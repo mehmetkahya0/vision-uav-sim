@@ -13,6 +13,10 @@
   A browser-based, photorealistic 3D unmanned aerial vehicle simulator featuring a physics-accurate flight dynamics engine modeled after the <strong>MQ-1 Predator</strong>, integrated <strong>real-time AI computer vision</strong> powered by TensorFlow.js, and a dynamic <strong>weather & day/night cycle</strong> system — all rendered on a full-scale <strong>CesiumJS</strong> globe with real-world terrain and 3D buildings.
 </p>
 
+<p align="center">
+  <img src="screenshots/main_page.png" alt="AI UAV Simulator Main View" width="100%">
+</p>
+
 ---
 
 ## 📋 Table of Contents
@@ -160,6 +164,11 @@ graph TD
 
 The flight dynamics engine (`dronePhysics.js`) is the heart of the simulator. It implements a **six-degrees-of-freedom (6-DOF)** fixed-wing flight model with the following aerodynamic pipeline executed each frame:
 
+<p align="center">
+  <img src="screenshots/drone_cam_without_ai.png" alt="Flight Dynamics View" width="100%">
+</p>
+
+
 ### Simulation Pipeline (per frame)
 
 ```
@@ -246,6 +255,11 @@ When on the ground, the physics model transitions to a surface dynamics mode:
 ## 🤖 AI Vision System
 
 The AI pipeline provides **five distinct computer vision models** running in real-time on the drone's FPV camera feed. All models operate directly in the browser using **TensorFlow.js** — no server required.
+
+<p align="center">
+  <img src="screenshots/drone_cam_with_ai.png" alt="AI Vision Object Detection" width="100%">
+</p>
+
 
 ### Model Architecture
 
@@ -338,6 +352,11 @@ Three camera modes provide comprehensive viewpoints, each with distinct control 
 ### Drone Camera (PiP)
 
 An independent FPV (First-Person View) camera renders to a **Picture-in-Picture** overlay in the bottom-right corner:
+
+<p align="center">
+  <img src="screenshots/main_page_with_ai_cam.png" alt="Drone Camera PiP" width="100%">
+</p>
+
 
 - **Toggle fullscreen**: `C` key or click the ⛶ button  
 - **Night Vision**: `Z` key — applies green-channel amplification with contrast boost
